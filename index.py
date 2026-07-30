@@ -1,31 +1,37 @@
-import json, os, urllib.request, ssl, time
+import json, os, urllib.request, ssl, time, base64, logging
 
+logger = logging.getLogger()
 CTX = ssl.create_default_context()
-CTX.check_hostname = False
-CTX.verify_mode = False
+CTX.check_hostname = False; CTX.verify_mode = False
 SINA = 'gb_goog,gb_aapl,gb_msft,gb_nvda,gb_tsla,gb_baba,gb_paas,gb_tlt,gb_smh,gb_appx,hk09988,hk00981,hk06030,hk00100,hk02824'
 
 def handler(event, context):
-    path = event.get('path', '/')
-    qs = event.get('queryString', event.get('queryParameters', {}))
-    method = event.get('httpMethod', event.get('method', 'GET'))
-    body = event.get('body', '{}')
+    # event is a JSON string from FC HTTP trigger
+    try: evt = json.loads(event) if isinstance(event, str) else event
+    except: return _resp(400, {'error': 'invalid event'})
+
+    path = evt.get('path', evt.get('rawPath', '/'))
+    body = evt.get('body', '{}')
+    if evt.get('isBase64Encoded'):
+        body = base64.b64decode(body).decode('utf-8')
     if isinstance(body, str):
         try: body = json.loads(body)
         except: body = {}
-    try:
-        if 'health' in path or path == '/':
-            return ok({'status': 'ok', 'routes': ['/health','/prices','/ai']})
-        elif 'prices' in path:
-            return ok(get_prices())
-        elif 'ai' in path:
-            return ok(get_ai(body))
-        else:
-            return err(404, 'not found: ' + path)
-    except Exception as e:
-        return err(500, str(e))
 
-def get_prices():
+    logger.info(f'path={path}')
+    try:
+        if 'health' in path:
+            return _ok({'status': 'ok', 'routes': ['/health','/prices','/ai']})
+        elif 'prices' in path:
+            return _ok(_prices())
+        elif 'ai' in path:
+            return _ok(_ai(body))
+        return _err(404, f'not found: {path}')
+    except Exception as e:
+        logger.error(str(e))
+        return _err(500, str(e))
+
+def _prices():
     req = urllib.request.Request(f'http://hq.sinajs.cn/list={SINA}', headers={'Referer': 'https://finance.sina.com.cn'})
     raw = urllib.request.urlopen(req, timeout=10, context=CTX).read().decode('gbk')
     prices = {}
@@ -39,7 +45,7 @@ def get_prices():
             prices[str(int(var.split('hk')[-1])) + '.HK'] = float(parts[3])
     return {'prices': prices, 'updated': time.strftime('%H:%M:%S')}
 
-def get_ai(body):
+def _ai(body):
     key = os.getenv('DEEPSEEK_API_KEY', '')
     if not key: return {'error': 'DEEPSEEK_API_KEY not set'}
     symbol = body.get('symbol', 'UNKNOWN')
@@ -50,8 +56,11 @@ def get_ai(body):
     resp = json.loads(urllib.request.urlopen(req, timeout=30, context=CTX).read())
     return {'analysis': resp['choices'][0]['message']['content'] if resp.get('choices') else '', 'symbol': symbol}
 
-def ok(data):
-    return {'statusCode': 200, 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'}, 'body': json.dumps(data, ensure_ascii=False), 'isBase64Encoded': False}
+def _ok(data):
+    return {'statusCode': 200, 'headers': {'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}, 'body': json.dumps(data, ensure_ascii=False), 'isBase64Encoded': False}
 
-def err(code, msg):
-    return {'statusCode': code, 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'}, 'body': json.dumps({'error': msg}), 'isBase64Encoded': False}
+def _err(code, msg):
+    return {'statusCode': code, 'headers': {'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}, 'body': json.dumps({'error': msg}), 'isBase64Encoded': False}
+
+def _resp(code, data):
+    return {'statusCode': code, 'headers': {'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}, 'body': json.dumps(data, ensure_ascii=False), 'isBase64Encoded': False}
