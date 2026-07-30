@@ -79,6 +79,33 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .hk-row .sym{color:var(--orange);width:80px}
 .hk-row .pnl{text-align:right}
 .hk-row .up{color:var(--green)}.hk-row .dn{color:var(--red)}
+/* ── H5 Mobile ── */
+@media(max-width:768px){
+  body{overflow-y:auto;display:block;height:auto}
+  #stage{width:100%;height:auto;transform:none!important;left:0!important;top:0!important;display:flex;flex-direction:column;padding:8px;gap:8px}
+  #header{position:static;height:auto;padding:8px 4px;flex-wrap:wrap}
+  #header h1{font-size:16px}
+  #header .sub{display:none}
+  #fs-btn{position:static;margin-left:8px}
+  #hero{position:static;height:auto;padding:16px 0;order:1}
+  #hero .kpi{font-size:40px;font-weight:300}
+  #hero .kpi-label{font-size:11px}
+  #hero .sub-kpis{flex-wrap:wrap;gap:16px}
+  #hero .sub-kpi .val{font-size:18px}
+  #hero .progress-wrap{width:100%}
+  #trend-chart,#sector-panel,#rank-panel,#risk-panel,#alloc-panel,#perf-panel,#hk-panel{position:static!important;width:100%!important;height:240px!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;margin:0!important}
+  #ai-strip{position:static;height:auto;flex-wrap:wrap}
+  .ai-card{min-width:100%}
+  #particles{display:none}
+  #glow-cursor{display:none}
+  .panel{backdrop-filter:none;-webkit-backdrop-filter:none}
+  #loading{display:none!important}
+}
+@media(max-width:480px){
+  #trend-chart,#sector-panel,#rank-panel,#risk-panel,#alloc-panel,#perf-panel,#hk-panel{height:200px!important}
+  #hero .kpi{font-size:32px}
+  #hero .sub-kpis{gap:10px}
+}
 </style></head>
 <body>
 <div id="glow-cursor"></div>
@@ -212,8 +239,8 @@ gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
 fetchPrices();
 setInterval(fetchPrices,300000); // every 5 min
 
-// ── Scaling ──
-function scale(){const s=document.getElementById('stage'),w=window.innerWidth,h=window.innerHeight,r=Math.min(w/1920,h/1080);s.style.transform=`scale(${r})`;s.style.left=`${(w-1920*r)/2}px`;s.style.top=`${(h-1080*r)/2}px`}
+// ── Scaling (desktop only) ──
+function scale(){if(window.innerWidth<=768)return;const s=document.getElementById('stage'),w=window.innerWidth,h=window.innerHeight,r=Math.min(w/1920,h/1080);s.style.transform=`scale(${r})`;s.style.left=`${(w-1920*r)/2}px`;s.style.top=`${(h-1080*r)/2}px`}
 window.addEventListener('resize',scale);scale();
 
 // ── Particles ──
@@ -221,7 +248,7 @@ const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
 canvas.width=1920;canvas.height=1080;
 document.getElementById('particles').appendChild(canvas);
 const particles=Array.from({length:50},()=>({x:Math.random()*1920,y:Math.random()*1080,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,a:Math.random()*.3+.05}));
-function animParticles(){ctx.clearRect(0,0,1920,1080);for(const p of particles){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>1920)p.vx*=-1;if(p.y<0||p.y>1080)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,1,0,Math.PI*2);ctx.fillStyle=`rgba(255,80,0,${p.a})`;ctx.fill()}requestAnimationFrame(animParticles)}animParticles();
+function animParticles(){if(window.innerWidth<=768)return;ctx.clearRect(0,0,1920,1080);for(const p of particles){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>1920)p.vx*=-1;if(p.y<0||p.y>1080)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,1,0,Math.PI*2);ctx.fillStyle=`rgba(255,80,0,${p.a})`;ctx.fill()}requestAnimationFrame(animParticles)}animParticles();
 
 // ── Glow cursor ──
 document.addEventListener('mousemove',e=>{const g=document.getElementById('glow-cursor');g.style.left=e.clientX+'px';g.style.top=e.clientY+'px';g.style.opacity='1';setTimeout(()=>g.style.opacity='0',2000)});
