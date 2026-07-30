@@ -23,6 +23,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #header h1{font-size:20px;font-weight:700;letter-spacing:3px;background:linear-gradient(135deg,var(--orange3),var(--orange),var(--amber));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 #header .sub{font-size:10px;color:var(--text2);letter-spacing:4px;margin-left:12px;text-transform:uppercase}
 #live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);margin-left:auto;animation:pulse 2s infinite;box-shadow:0 0 8px var(--green)}
+.mkt-tag{font-size:10px;padding:2px 8px;border-radius:2px;margin-left:12px;letter-spacing:1px}
+.mkt-up{color:var(--green);border:1px solid rgba(0,230,118,.2)}.mkt-dn{color:var(--red);border:1px solid rgba(255,61,61,.2)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 #live-label{font-size:10px;color:var(--green);margin-left:6px;letter-spacing:2px}
 #header .date{font-size:11px;color:var(--text2);margin-left:20px}
@@ -151,6 +153,8 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
   <div id="header">
     <h1>灼沅资产指挥中心</h1>
     <span class="sub">ZHUOYUAN · COMMAND CENTER</span>
+    <span id="mkt-spx" class="mkt-tag"></span>
+    <span id="mkt-ixic" class="mkt-tag"></span>
     <span id="live-dot"></span><span id="live-label">LIVE</span>
     <span class="date" id="date-str"></span>
   </div>
@@ -283,7 +287,12 @@ function refreshAllCharts(){
   }
 }
 
-// ── Init: always fetch live first, fallback to defaults ──
+// ── Market tickers ──
+function updateMarkets(prices){
+  const spx=prices['SPX.US'];const ixic=prices['IXIC.US'];
+  if(spx) document.getElementById('mkt-spx').innerHTML='S&P '+spx.toFixed(0);
+  if(ixic) document.getElementById('mkt-ixic').innerHTML='NASDAQ '+ixic.toFixed(0);
+}
 function initAll(prices){
   const result=calcAllPos(prices);
   allPos=result.all;gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
@@ -304,6 +313,7 @@ async function fetchPrices(initial=false){
     const resp=await fetch(API_BASE+'/prices',{cache:'no-store'});
     const data=await resp.json();
     if(data.prices && Object.keys(data.prices).length>=5){
+      updateMarkets(data.prices);
       data._updated=data.updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
       initAll(data);
       return true;

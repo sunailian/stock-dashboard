@@ -6,7 +6,7 @@ app = Flask(__name__)
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
 CTX.verify_mode = False
-SINA = 'gb_goog,gb_aapl,gb_msft,gb_nvda,gb_tsla,gb_baba,gb_paas,gb_tlt,gb_smh,gb_appx,hk09988,hk00981,hk06030,hk00100,hk02824'
+SINA = 'gb_goog,gb_aapl,gb_msft,gb_nvda,gb_tsla,gb_baba,gb_paas,gb_tlt,gb_smh,gb_appx,hk09988,hk00981,hk06030,hk00100,hk02824,gb_spx,gb_ixic'
 
 @app.route('/health')
 def health():
