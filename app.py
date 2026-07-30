@@ -108,5 +108,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     server = HTTPServer(('0.0.0.0', PORT), Handler)
-    print(f'Stock API running on port {PORT}', flush=True)
-    server.serve_forever()
+    print(f'Stock API on port {PORT}', flush=True)
+    # Handle one request then exit (FC event mode re-invokes per request)
+    server.handle_request()
+    server.server_close()
