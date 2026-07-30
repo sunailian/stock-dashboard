@@ -45,21 +45,28 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+    def _route(self, method):
+        path = urlparse(self.path).path.rstrip('/') or '/'
+        # strip FC proxy prefix like /2016-08-15/proxy/... or /function-name/
+        for seg in ['/prices', '/health', '/ai']:
+            if path.endswith(seg) or seg in path:
+                return seg
+        return path
     def do_GET(self):
-        path = urlparse(self.path).path
-        if path == '/health': self._send(200, {'status': 'ok'})
+        path = self._route('GET')
+        if path == '/health': self._send(200, {'status': 'ok', 'routes': ['/prices','/ai']})
         elif path == '/prices':
             try: self._send(200, get_prices())
             except Exception as e: self._send(500, {'error': str(e)})
-        else: self._send(404, {'error': 'not found'})
+        else: self._send(404, {'error': 'not found', 'path': urlparse(self.path).path})
     def do_POST(self):
-        path = urlparse(self.path).path
         cl = int(self.headers.get('Content-Length', 0))
         body = json.loads(self.rfile.read(cl)) if cl > 0 else {}
+        path = self._route('POST')
         if path == '/ai':
             try: self._send(200, get_ai(body))
             except Exception as e: self._send(500, {'error': str(e)})
-        else: self._send(404, {'error': 'not found'})
+        else: self._send(404, {'error': 'not found', 'path': urlparse(self.path).path})
     def log_message(self, *args): pass  # silent
 
 if __name__ == '__main__':
