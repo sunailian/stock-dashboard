@@ -45,8 +45,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 /* Right panels */
 #alloc-panel{position:absolute;top:70px;right:12px;width:336px;height:260px}
 #perf-panel{position:absolute;top:342px;right:12px;width:336px;height:260px}
-/* Bottom AI cards */
-#ai-strip{position:absolute;bottom:12px;left:12px;right:12px;height:200px;display:flex;gap:12px;overflow-x:auto;z-index:5}
+/* AI analysis panel */
+#ai-panel{margin:0 12px;position:relative;z-index:5}
+#ai-panel .panel-title{padding:14px 18px 8px}
+#ai-strip{display:flex;gap:12px;overflow-x:auto;padding:4px 18px 14px;flex-wrap:wrap}
+@media(max-width:768px){#ai-panel{margin:0}}
 .ai-card{min-width:260px;background:var(--panel);border:1px solid var(--border);border-radius:2px;padding:16px;flex-shrink:0}
 .ai-card .sym{font-size:18px;font-weight:700;color:var(--orange)}  
 .ai-card .act{font-size:11px;margin-top:6px;line-height:1.5;color:var(--text)}
@@ -108,8 +111,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #trend-chart,#sector-panel,#rank-panel,#alloc-panel,#perf-panel{position:static!important;width:100%!important;height:280px!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;margin:0!important}
   #us-panel,#hk-panel{position:static!important;width:100%!important;height:260px!important;left:auto!important;right:auto!important;top:auto!important;margin:0!important;display:flex!important;flex-direction:column!important}
   #rec-panel{position:static!important;width:100%!important;left:auto!important;right:auto!important;margin:0!important}
-  #us-panel,#hk-panel{max-height:300px}
-  #ai-strip{position:static;height:auto;flex-wrap:wrap}
+  #ai-panel{position:static!important;width:100%!important;margin:0!important}
   .ai-card{min-width:100%}
   #particles{display:none}
   #glow-cursor{display:none}
@@ -192,15 +194,23 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
     <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">PAAS ⛏️</div><div class="act">白银矿企 -0.8% 成本附近。贵金属牛市周期，建议加仓至 200 股作为抗通胀配置。</div><span class="tag tag-bull">长期 · 配置</span></div>
     </div>
   </div>
-  <!-- BOTTOM AI -->
-  <div id="ai-strip">
-    <div class="ai-card fade-up" style="animation-delay:.8s" onclick="fetchAI('GOOG')"><div class="sym">GOOG 🎯</div><div class="act">+59.9% 远超目标。Alphabet 广告+云双引擎强劲，建议持有但可逐步减仓锁利 20-30%。</div><span class="tag tag-hold">持有 · 锁利</span></div>
-    <div class="ai-card fade-up" style="animation-delay:.9s" onclick="fetchAI('AAPL')"><div class="sym">AAPL 🎯</div><div class="act">+61.7% 超额完成。Vision Pro 生态+服务收入增长，估值偏高可分批止盈。</div><span class="tag tag-hold">持有 · 止盈</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1s" onclick="fetchAI('MSFT')"><div class="sym">MSFT 🟡</div><div class="act">+15.5% 接近目标。Azure+AI 增长确定性高，建议继续持有等待达标。</div><span class="tag tag-bull">持有 · 等待</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1.1s" onclick="fetchAI('TSLA')"><div class="sym">TSLA 🔴</div><div class="act">-25.1% 触发止损。盈利能力承压，建议止损或大幅减仓至 10 股以下观察。</div><span class="tag tag-bear">建议止损</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1.2s" onclick="fetchAI('APPX')"><div class="sym">APPX 🔴</div><div class="act">-76.5% 杠杆ETF重创。2倍杠杆不适合长期持有，建议立即清仓止损。</div><span class="tag tag-bear">立即止损</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1.3s" onclick="fetchAI('NVDA')"><div class="sym">NVDA 📈</div><div class="act">+1.2% 成本区。AI芯片龙头地位稳固，B系列量产在即，建议逢低加仓。</div><span class="tag tag-bull">逢低加仓</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1.4s" onclick="fetchAI('100.HK')"><div class="sym">100.HK 🔴</div><div class="act">-71.9% MINIMAX暴跌。AI概念退潮+竞争加剧，建议止损换仓至优质中概。</div><span class="tag tag-bear">建议止损</span></div>
+  <!-- AI ANALYSIS -->
+  <div class="panel" id="ai-panel">
+    <div class="panel-title">🤖 AI 持仓分析 · AI ANALYSIS（点击卡片刷新建议）</div>
+    <div id="ai-strip">
+    <div class="ai-card fade-up" style="animation-delay:.8s" onclick="fetchAI('GOOG')"><div class="sym">GOOG</div><div class="act">+59.9% 远超目标。Alphabet 广告+云双引擎强劲，建议持有但逐步减仓锁利。</div><span class="tag tag-hold">持有</span></div>
+    <div class="ai-card fade-up" style="animation-delay:.85s" onclick="fetchAI('AAPL')"><div class="sym">AAPL</div><div class="act">+61.7% 超额完成。Vision Pro 生态+服务收入增长，估值偏高可分批止盈。</div><span class="tag tag-hold">持有</span></div>
+    <div class="ai-card fade-up" style="animation-delay:.9s" onclick="fetchAI('MSFT')"><div class="sym">MSFT</div><div class="act">+15.5% 接近目标。Azure+AI 增长确定性高，建议继续持有等待达标。</div><span class="tag tag-bull">持有</span></div>
+    <div class="ai-card fade-up" style="animation-delay:.95s" onclick="fetchAI('NVDA')"><div class="sym">NVDA</div><div class="act">+1.2% 成本区。AI芯片龙头地位稳固，B系列量产在即，逢低加仓。</div><span class="tag tag-bull">加仓</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1s" onclick="fetchAI('TSLA')"><div class="sym">TSLA</div><div class="act">-25.1% 触发止损。盈利能力承压，建议止损或大幅减仓观察。</div><span class="tag tag-bear">止损</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.05s" onclick="fetchAI('APPX')"><div class="sym">APPX</div><div class="act">-76.5% 杠杆ETF重创。2倍杠杆不适合长期持有，建议立即清仓。</div><span class="tag tag-bear">止损</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.1s" onclick="fetchAI('BABA')"><div class="sym">BABA.US</div><div class="act">成本已为负。中概回暖+电商复苏，持有观察跨境政策变化。</div><span class="tag tag-hold">持有</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.15s" onclick="fetchAI('TLT')"><div class="sym">TLT</div><div class="act">+4.2% 稳健。降息周期下长债弹性最大，建议作为防御配置持有。</div><span class="tag tag-hold">持有</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.2s" onclick="fetchAI('9988.HK')"><div class="sym">9988.HK</div><div class="act">阿里港股-3.4%回调中。估值低位+回购支撑，等待催化剂。</div><span class="tag tag-hold">持有</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.25s" onclick="fetchAI('981.HK')"><div class="sym">981.HK</div><div class="act">中芯国际+11.3%。国产替代加速，先进制程突破是关键。</div><span class="tag tag-bull">加仓</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.3s" onclick="fetchAI('100.HK')"><div class="sym">100.HK</div><div class="act">-71.9% MINIMAX暴跌。AI概念退潮+竞争加剧，建议止损。</div><span class="tag tag-bear">止损</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.35s" onclick="fetchAI('2824.HK')"><div class="sym">2824.HK</div><div class="act">黄金ETF-38.1%。降息+地缘风险利好黄金，长期持有。</div><span class="tag tag-bull">加仓</span></div>
+    </div>
   </div>
 </div>
 
