@@ -133,34 +133,109 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 </div>
 
 <script>
-// ── Data ──
+// ── Data (cost basis fixed, prices from Sina) ──
 const portfolio={
   netAssets:910253, cash:76020, buyPower:560478, cashUSD:7638, cashHKD:16129,
   totalReturn:49.5, annualTarget:20,
   usPositions:[
-    {sym:'GOOG',name:'Alphabet',qty:56,cost:209.93,price:335.76,ccy:'USD',sector:'科技'},
-    {sym:'AAPL',name:'Apple',qty:29,cost:209.15,price:338.19,ccy:'USD',sector:'科技'},
-    {sym:'MSFT',name:'Microsoft',qty:20,cost:338.07,price:390.54,ccy:'USD',sector:'科技'},
-    {sym:'NVDA',name:'NVIDIA',qty:50,cost:187.74,price:190.01,ccy:'USD',sector:'半导体'},
-    {sym:'TSLA',name:'Tesla',qty:30,cost:398.03,price:298.32,ccy:'USD',sector:'汽车'},
-    {sym:'BABA',name:'Alibaba',qty:110,cost:-188.67,price:115.03,ccy:'USD',sector:'电商'},
-    {sym:'PAAS',name:'Pan American Silver',qty:120,cost:42.89,price:42.55,ccy:'USD',sector:'矿业'},
-    {sym:'TLT',name:'iShares 20+Yr Treasury',qty:50,cost:79.54,price:82.85,ccy:'USD',sector:'债券'},
-    {sym:'SMH',name:'VanEck Semiconductor',qty:10,cost:538.14,price:504.22,ccy:'USD',sector:'半导体'},
-    {sym:'APPX',name:'2X Long APP Daily',qty:16,cost:97.97,price:23.04,ccy:'USD',sector:'杠杆ETF'}
+    {sym:'GOOG',name:'Alphabet',qty:56,cost:209.93,ccy:'USD',sector:'科技'},
+    {sym:'AAPL',name:'Apple',qty:29,cost:209.15,ccy:'USD',sector:'科技'},
+    {sym:'MSFT',name:'Microsoft',qty:20,cost:338.07,ccy:'USD',sector:'科技'},
+    {sym:'NVDA',name:'NVIDIA',qty:50,cost:187.74,ccy:'USD',sector:'半导体'},
+    {sym:'TSLA',name:'Tesla',qty:30,cost:398.03,ccy:'USD',sector:'汽车'},
+    {sym:'BABA',name:'Alibaba',qty:110,cost:-188.67,ccy:'USD',sector:'电商'},
+    {sym:'PAAS',name:'Pan American Silver',qty:120,cost:42.89,ccy:'USD',sector:'矿业'},
+    {sym:'TLT',name:'iShares 20+Yr Treasury',qty:50,cost:79.54,ccy:'USD',sector:'债券'},
+    {sym:'SMH',name:'VanEck Semiconductor',qty:10,cost:538.14,ccy:'USD',sector:'半导体'},
+    {sym:'APPX',name:'2X Long APP Daily',qty:16,cost:97.97,ccy:'USD',sector:'杠杆ETF'}
   ],
   hkPositions:[
-    {sym:'9988.HK',name:'阿里巴巴-W',qty:600,cost:117.63,price:113.60,ccy:'HKD',sector:'电商'},
-    {sym:'981.HK',name:'中芯国际',qty:500,cost:60.40,price:67.20,ccy:'HKD',sector:'半导体'},
-    {sym:'6030.HK',name:'中信证券',qty:1000,cost:28.78,price:27.78,ccy:'HKD',sector:'金融'},
-    {sym:'100.HK',name:'MINIMAX-W',qty:40,cost:756.00,price:212.80,ccy:'HKD',sector:'AI'},
-    {sym:'2824.HK',name:'易方达黄金ETF',qty:5000,cost:15.00,price:9.28,ccy:'HKD',sector:'黄金'}
+    {sym:'9988.HK',name:'阿里巴巴-W',qty:600,cost:117.63,ccy:'HKD',sector:'电商'},
+    {sym:'981.HK',name:'中芯国际',qty:500,cost:60.40,ccy:'HKD',sector:'半导体'},
+    {sym:'6030.HK',name:'中信证券',qty:1000,cost:28.78,ccy:'HKD',sector:'金融'},
+    {sym:'100.HK',name:'MINIMAX-W',qty:40,cost:756.00,ccy:'HKD',sector:'AI'},
+    {sym:'2824.HK',name:'易方达黄金ETF',qty:5000,cost:15.00,ccy:'HKD',sector:'黄金'}
   ]
 };
 
-// Compute derived data
-const allPos=[...portfolio.usPositions.map(p=>({...p,pnl:(p.price-p.cost)*p.qty,ret:(p.cost!==0?(p.price-p.cost)/Math.abs(p.cost)*100:0)})),...portfolio.hkPositions.map(p=>({...p,pnl:(p.price-p.cost)*p.qty,ret:(p.cost!==0?(p.price-p.cost)/Math.abs(p.cost)*100:0)}))];
-const gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
+// Default prices (fallback) + live fetch flag
+let allPos=[],gainers=[],priceTime='';
+const defaultPrices={GOOG:335.76,AAPL:338.19,MSFT:390.54,NVDA:190.01,TSLA:298.32,BABA:115.03,PAAS:42.55,TLT:82.85,SMH:504.22,APPX:23.04,'9988.HK':113.60,'981.HK':67.20,'6030.HK':27.78,'100.HK':212.80,'2824.HK':9.28};
+
+function calcAllPos(prices){
+  const us=portfolio.usPositions.map(p=>{
+    const px=prices[p.sym]||defaultPrices[p.sym]||0;
+    return {...p,price:px,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/Math.abs(p.cost)*100:0)};
+  });
+  const hk=portfolio.hkPositions.map(p=>{
+    const px=prices[p.sym]||defaultPrices[p.sym]||0;
+    return {...p,price:px,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/p.cost*100:0)};
+  });
+  return {all:[...us,...hk],us,hk};
+}
+
+async function fetchPrices(){
+  const usCodes=portfolio.usPositions.map(p=>p.sym.split('.')[0].toLowerCase());
+  const hkCodes=portfolio.hkPositions.map(p=>p.sym.split('.')[0].padStart(5,'0'));
+  const sinaCodes=['gb_'+usCodes.join(',gb_'),'hk'+hkCodes.join(',hk')].join(',');
+  // Try direct first, fall back to CORS proxy (replace with Alibaba Cloud FC proxy later)
+  const urls=[
+    'https://hq.sinajs.cn/list='+sinaCodes,
+    'https://api.allorigins.win/raw?url='+encodeURIComponent('http://hq.sinajs.cn/list='+sinaCodes)
+  ];
+  for(const url of urls){
+    try{
+      const resp=await fetch(url,{headers:{Referer:'https://finance.sina.com.cn'}});
+      if(!resp.ok)continue;
+      const raw=await resp.text();
+      const prices={};
+      for(const line of raw.split('\n')){
+        if(!line.includes('='))continue;
+        const varPart=line.split('=')[0];
+        const parts=line.split('"')[1]?.split(',');
+        if(!parts||!parts[1])continue;
+        if(varPart.includes('gb_')){
+          prices[varPart.split('_').pop().toUpperCase()+'.US']=parseFloat(parts[1])||0;
+        }else{
+          prices[parseInt(varPart.split('hk').pop())+'.HK']=parseFloat(parts[3])||0;
+        }
+      }
+      if(Object.keys(prices).length>=5){
+        const result=calcAllPos(prices);
+        allPos=result.all;gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
+        priceTime=new Date().toLocaleTimeString('zh-CN',{hour12:false});
+        refreshAllCharts();
+        document.getElementById('live-label').textContent='LIVE '+priceTime;
+        return;
+      }
+    }catch(e){}
+  }
+  console.log('All price sources failed, using defaults');
+}
+
+function refreshAllCharts(){
+  const d=allPos;
+  // Hero
+  document.getElementById('hero-pct').textContent=((allPos.reduce((s,p)=>s+p.pnl,0)/(allPos.reduce((s,p)=>s+Math.abs(p.cost)*p.qty,0)||1))*100).toFixed(1)+'%';
+  // Rank
+  chartRank.setOption({yAxis:{data:gainers.map(p=>p.sym).reverse()},series:[{data:gainers.map(p=>({value:p.ret,itemStyle:{color:p.ret>=20?'#00e676':p.ret>=0?'#ff6a00':'#ff3d3d'}})).reverse()}]});
+  // Perf spectrum
+  const bins={'>+50%':0,'+20~50%':0,'0~20%':0,'-10~0%':0,'-30~-10%':0,'<-30%':0};
+  for(const p of d){const r=p.ret;if(r>50)bins['>+50%']++;else if(r>=20)bins['+20~50%']++;else if(r>=0)bins['0~20%']++;else if(r>=-10)bins['-10~0%']++;else if(r>=-30)bins['-30~-10%']++;else bins['<-30%']++}
+  chartPerf.setOption({series:[{data:Object.values(bins).map(v=>({value:v,itemStyle:{color:v>2?'#00e676':v>0?'#ff6a00':'#ff3d3d'}}))}]});
+  // HK list
+  const hkList=document.getElementById('hk-list');hkList.innerHTML='';
+  for(const p of d.filter(x=>x.sym.includes('.HK'))){
+    const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
+    hkList.innerHTML+=`<div class="hk-row"><span class="sym">${p.sym}</span><span>${p.name}</span><span>${p.qty}股</span><span>HK$${p.price.toFixed(1)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+  }
+}
+
+// Init with defaults, then fetch live
+({all:allPos,us:usPos,hk:hkPos}=calcAllPos(defaultPrices));
+gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
+fetchPrices();
+setInterval(fetchPrices,300000); // every 5 min
 
 // ── Scaling ──
 function scale(){const s=document.getElementById('stage'),w=window.innerWidth,h=window.innerHeight,r=Math.min(w/1920,h/1080);s.style.transform=`scale(${r})`;s.style.left=`${(w-1920*r)/2}px`;s.style.top=`${(h-1080*r)/2}px`}
