@@ -124,6 +124,24 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 }
 </style></head>
 <body>
+<div id="auth-overlay" style="position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px">
+  <div style="font-size:24px;font-weight:700;letter-spacing:4px;background:linear-gradient(135deg,var(--orange3),var(--orange));-webkit-background-clip:text;-webkit-text-fill-color:transparent">灼沅资产指挥中心</div>
+  <div style="font-size:12px;color:var(--text2)">ZHUOYUAN · COMMAND CENTER</div>
+  <input id="auth-input" type="password" placeholder="输入访问密码" autofocus style="width:260px;padding:10px 16px;background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);font-size:14px;border-radius:2px;outline:none;text-align:center" onkeydown="if(event.key==='Enter')authSubmit()">
+  <button onclick="authSubmit()" style="padding:8px 32px;background:var(--orange);border:none;color:#fff;font-size:13px;cursor:pointer;border-radius:2px;letter-spacing:2px">验证</button>
+  <div id="auth-error" style="font-size:11px;color:var(--red);display:none">密码错误</div>
+</div>
+<script>
+// 密码 SHA-256 哈希（分两段防截断）
+const AUTH_HASH='d73844191b83dd33b23b2e66222d5af1'+'a8527707a8fc6f8197a6b1aaf38e4e9a'
+async function authSubmit(){
+  const pw=document.getElementById('auth-input').value;
+  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pw)))).map(b=>b.toString(16).padStart(2,'0')).join('');
+  if(hash===AUTH_HASH){document.getElementById('auth-overlay').style.display='none';sessionStorage.setItem('auth','1')}
+  else{document.getElementById('auth-error').style.display='block'}
+}
+if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').style.display='none';
+</script>
 <div id="glow-cursor"></div>
 <div id="loading"><div class="spinner"></div></div>
 <div id="stage">
