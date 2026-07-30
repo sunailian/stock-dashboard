@@ -208,19 +208,6 @@ function calcAllPos(prices){
   return {all:[...us,...hk],us,hk};
 }
 
-async function fetchPrices(){
-  try{
-    const resp=await fetch(API_BASE+'/prices');
-    const data=await resp.json();
-    if(data.prices && Object.keys(data.prices).length>=5){
-      const result=calcAllPos(data.prices);
-      allPos=result.all;gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
-      priceTime=data.updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
-      refreshAllCharts();
-      document.getElementById('live-label').textContent='LIVE '+priceTime;
-    }
-  }catch(e){console.log('Price fetch:',e)}
-}
 
 function refreshAllCharts(){
   const d=allPos;
@@ -240,19 +227,39 @@ function refreshAllCharts(){
   }
 }
 
-// Init with defaults, then fetch live
-({all:allPos,us:usPos,hk:hkPos}=calcAllPos(defaultPrices));
-gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
-// Initial HK list render
-(function initHKList(){
-  const hkl=document.getElementById('hk-list');hkl.innerHTML='';
-  for(const p of portfolio.hkPositions){
-    const px=defaultPrices[p.sym]||0;const r=((px-p.cost)/p.cost*100).toFixed(1);const c=r>=0?'up':'dn';
-    hkl.innerHTML+=`<div class="hk-row"><span class="sym">${p.sym}</span><span>${p.name}</span><span>${p.qty}股</span><span>HK$${px.toFixed(1)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
-  }
-})();
-fetchPrices();
-setInterval(fetchPrices,300000); // every 5 min
+// ── Init: always fetch live first, fallback to defaults ──
+function initAll(prices){
+  const result=calcAllPos(prices);
+  allPos=result.all;gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
+  priceTime=result._updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  refreshAllCharts();
+  document.getElementById('live-label').textContent='LIVE '+priceTime;
+  // Update hero numbers
+  const totalPnl=allPos.reduce((s,p)=>s+p.pnl,0);
+  const totalCost=allPos.reduce((s,p)=>s+Math.abs(p.cost)*p.qty,0)||1;
+  document.getElementById('hero-pct').textContent=(totalPnl/totalCost*100).toFixed(1)+'%';
+  document.getElementById('hero-kpi').textContent='HKD '+(portfolio.netAssets+Math.round(totalPnl/7.8)).toLocaleString();
+  document.getElementById('hero-bar').style.width=Math.min(Math.abs(totalPnl/totalCost*100),100)+'%';
+}
+
+async function fetchPrices(initial=false){
+  if(initial) document.getElementById('live-label').textContent='SYNC...';
+  try{
+    const resp=await fetch(API_BASE+'/prices',{cache:'no-store'});
+    const data=await resp.json();
+    if(data.prices && Object.keys(data.prices).length>=5){
+      data._updated=data.updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
+      initAll(data);
+      return true;
+    }
+  }catch(e){console.log('Price fetch:',e)}
+  if(initial){initAll(defaultPrices);document.getElementById('live-label').textContent='CACHED';}
+  return false;
+}
+
+// Boot: live first, defaults if offline
+fetchPrices(true);
+setInterval(()=>fetchPrices(),300000);
 
 // ── Scaling (desktop only) ──
 function scale(){if(window.innerWidth<=768)return;const s=document.getElementById('stage'),w=window.innerWidth,h=window.innerHeight,r=Math.min(w/1920,h/1080);s.style.transform=`scale(${r})`;s.style.left=`${(w-1920*r)/2}px`;s.style.top=`${(h-1080*r)/2}px`}
