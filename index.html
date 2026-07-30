@@ -84,6 +84,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .stock-table th{text-align:left;padding:5px 18px;color:var(--orange);font-weight:400;font-size:10px;letter-spacing:1px;border-bottom:1px solid rgba(255,80,0,.2);position:sticky;top:0;background:var(--panel);z-index:1}
 .stock-table td{padding:5px 18px;border-bottom:1px solid rgba(255,255,255,.03)}
 .stock-table .up{color:var(--green)}.stock-table .dn{color:var(--red)}
+/* Table panels override overflow */
+#us-panel,#hk-panel{overflow-y:auto!important}
+#us-panel .panel-title,#hk-panel .panel-title{position:sticky;top:0;z-index:2;background:var(--panel)}
 /* Rec panel */
 #rec-panel{margin:0 12px;position:relative;z-index:5}
 #rec-panel .panel-title{padding:14px 18px 8px}
@@ -108,7 +111,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #hero .progress-wrap{width:100%}
   #trend-chart,#sector-panel,#rank-panel,#us-panel,#alloc-panel,#perf-panel,#hk-panel{position:static!important;width:100%!important;height:280px!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;margin:0!important}
   #rec-panel{position:static!important;width:100%!important;left:auto!important;right:auto!important;margin:0!important}
-  #us-list,#hk-list{height:auto!important;max-height:300px}
+  #us-panel,#hk-panel{max-height:300px}
   #ai-strip{position:static;height:auto;flex-wrap:wrap}
   .ai-card{min-width:100%}
   #particles{display:none}
@@ -155,12 +158,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <!-- LEFT -->
   <div class="panel" id="sector-panel"><div class="panel-title">板块分布 · SECTOR</div><div class="chart-wrap" id="chart-sector"></div></div>
   <div class="panel" id="rank-panel"><div class="panel-title">盈利排行 · TOP GAINERS</div><div class="chart-wrap" id="chart-rank"></div></div>
-  <div class="panel" id="us-panel"><div class="panel-title">美股明细 · US DETAIL</div><div id="us-list" style="overflow-y:auto;height:calc(100% - 40px)"></div></div>
+  <div class="panel" id="us-panel"><div class="panel-title">美股明细 · US DETAIL</div><div id="us-list"></div></div>
 
   <!-- RIGHT -->
   <div class="panel" id="alloc-panel"><div class="panel-title">持仓占比 · ALLOCATION</div><div class="chart-wrap" id="chart-alloc"></div></div>
   <div class="panel" id="perf-panel"><div class="panel-title">收益率分布 · P&L SPECTRUM</div><div class="chart-wrap" id="chart-perf"></div></div>
-  <div class="panel" id="hk-panel"><div class="panel-title">港股明细 · HK DETAIL</div><div id="hk-list" style="overflow-y:auto;height:calc(100% - 40px);padding-top:4px"></div></div>
+  <div class="panel" id="hk-panel"><div class="panel-title">港股明细 · HK DETAIL</div><div id="hk-list"></div></div>
 
   <!-- RECOMMENDATIONS -->
   <div class="panel" id="rec-panel">
