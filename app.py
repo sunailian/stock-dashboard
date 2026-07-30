@@ -1,8 +1,7 @@
-"""股票看板 API — 行情代理 + AI 分析
-环境变量：DEEPSEEK_API_KEY"""
+"""股票看板 API — 行情代理 + AI 分析。环境变量：DEEPSEEK_API_KEY"""
 import json, os, urllib.request, ssl, time
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
@@ -11,8 +10,7 @@ SINA = 'gb_goog,gb_aapl,gb_msft,gb_nvda,gb_tsla,gb_baba,gb_paas,gb_tlt,gb_smh,gb
 PORT = int(os.getenv('FC_SERVER_PORT', 9000))
 
 def get_prices():
-    url = f'http://hq.sinajs.cn/list={SINA}'
-    req = urllib.request.Request(url, headers={'Referer': 'https://finance.sina.com.cn'})
+    req = urllib.request.Request(f'http://hq.sinajs.cn/list={SINA}', headers={'Referer': 'https://finance.sina.com.cn'})
     raw = urllib.request.urlopen(req, timeout=10, context=CTX).read().decode('gbk')
     prices = {}
     for line in raw.strip().split('\n'):
@@ -37,7 +35,7 @@ def get_ai(body):
     return {'analysis': resp['choices'][0]['message']['content'] if resp.get('choices') else '', 'symbol': symbol}
 
 class Handler(BaseHTTPRequestHandler):
-    def _send(self, code, data):
+    def _respond(self, code, data):
         body = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(code)
         self.send_header('Content-Type', 'application/json')
@@ -45,70 +43,82 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-    def _route(self, method):
-        path = urlparse(self.path).path.rstrip('/') or '/'
-        for seg in ['/prices', '/health', '/ai']:
-            if path.endswith(seg) or seg in path:
-                return seg
-        return path
 
-    def _parse_event(self):
-        """FC event function mode: reads original request from POST /invoke body"""
+    def _read_body(self):
         cl = int(self.headers.get('Content-Length', 0))
-        if cl > 0:
-            try:
-                event = json.loads(self.rfile.read(cl))
-                self._event_body = event.get('body', '')
-                return event
-            except: pass
+        if cl == 0: return b''
+        return self.rfile.read(cl)
+
+    def _try_json(self, raw):
+        """Try parsing as JSON, fall back gracefully"""
+        if not raw: return {}
+        try: return json.loads(raw)
+        except: pass
+        # Maybe FC event format: raw bytes with headers prefix
+        try:
+            text = raw.decode('utf-8', errors='replace')
+            return json.loads(text)
+        except: pass
         return {}
 
     def do_GET(self):
-        path = self._route('GET')
-        if path == '/health': self._send(200, {'status': 'ok', 'routes': ['/prices','/ai']})
+        path = urlparse(self.path).path.rstrip('/') or '/'
+        qs = parse_qs(urlparse(self.path).query)
+        # Query param routing: ?path=health
+        p = qs.get('path', [None])[0]
+        if p: path = '/' + p.lstrip('/')
+        if path == '/health' or path == '/':
+            self._respond(200, {'status': 'ok', 'routes': ['/health','/prices','/ai']})
         elif path == '/prices':
-            try: self._send(200, get_prices())
-            except Exception as e: self._send(500, {'error': str(e)})
-        else: self._send(404, {'error': 'not found', 'path': urlparse(self.path).path})
+            try: self._respond(200, get_prices())
+            except Exception as e: self._respond(500, {'error': str(e)})
+        else:
+            self._respond(404, {'error': 'not found', 'path': path})
 
     def do_POST(self):
-        path = self._route('POST')
-        # FC event mode: POST /invoke with the actual request in body
-        if path != '/ai' and path != '/prices' and path != '/health':
-            event = self._parse_event()
-            if event:
-                rpath = event.get('path', event.get('rawPath', ''))
-                if 'health' in rpath:
-                    self._send(200, {'status': 'ok', 'routes': ['/prices','/ai'], 'mode': 'event'})
-                    return
-                if 'prices' in rpath:
-                    self._send(200, get_prices())
-                    return
-                if 'ai' in rpath or event.get('httpMethod') == 'POST':
-                    body = event.get('body', '{}')
-                    if isinstance(body, str):
-                        try: body = json.loads(body)
-                        except: body = {}
-                    self._send(200, get_ai(body))
-                    return
-            # fallback: normal POST
-            cl = int(self.headers.get('Content-Length', 0))
-            body = json.loads(self.rfile.read(cl)) if cl > 0 else {}
-            if path == '/ai' or '/ai' in urlparse(self.path).path:
-                self._send(200, get_ai(body))
+        path = urlparse(self.path).path.rstrip('/') or '/'
+        raw = self._read_body()
+        event = self._try_json(raw)
+
+        # FC event mode: the body IS the FC event, containing the real request
+        if 'path' in event or 'rawPath' in event:
+            rpath = event.get('path', event.get('rawPath', ''))
+            if 'health' in rpath:
+                self._respond(200, {'status': 'ok', 'mode': 'event'})
                 return
+            if 'prices' in rpath:
+                try: self._respond(200, get_prices())
+                except Exception as e: self._respond(500, {'error': str(e)})
+                return
+            if 'ai' in rpath:
+                body = event.get('body', '{}')
+                if isinstance(body, str):
+                    try: body = json.loads(body)
+                    except: body = {'symbol': 'UNKNOWN'}
+                self._respond(200, get_ai(body))
+                return
+
+        # Direct POST routing
+        if path == '/ai':
+            self._respond(200, get_ai(event))
+        elif path == '/prices':
+            self._respond(200, get_prices())
+        elif path == '/health':
+            self._respond(200, {'status': 'ok'})
+        elif path == '/invoke':
+            # FC proxy mode: try query params
+            qs = parse_qs(urlparse(self.path).query)
+            p = qs.get('path', [None])[0]
+            if p == 'health': self._respond(200, {'status': 'ok'})
+            elif p == 'prices': self._respond(200, get_prices())
+            elif p == 'ai': self._respond(200, get_ai(event))
+            else: self._respond(200, {'status': 'ok', 'debug': str(event)[:200]})
         else:
-            cl = int(self.headers.get('Content-Length', 0))
-            body = json.loads(self.rfile.read(cl)) if cl > 0 else {}
-            if path == '/ai':
-                self._send(200, get_ai(body))
-                return
-        self._send(404, {'error': 'not found', 'path': urlparse(self.path).path})
-    def log_message(self, *args): pass  # silent
+            self._respond(404, {'error': 'not found', 'path': path})
+
+    def log_message(self, *args): pass
 
 if __name__ == '__main__':
     server = HTTPServer(('0.0.0.0', PORT), Handler)
-    print(f'Stock API on port {PORT}', flush=True)
-    # Handle one request then exit (FC event mode re-invokes per request)
     server.handle_request()
     server.server_close()
