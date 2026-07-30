@@ -157,6 +157,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="ai-card fade-up" style="animation-delay:1.3s" onclick="fetchAI('NVDA')"><div class="sym">NVDA 📈</div><div class="act">+1.2% 成本区。AI芯片龙头地位稳固，B系列量产在即，建议逢低加仓。</div><span class="tag tag-bull">逢低加仓</span></div>
     <div class="ai-card fade-up" style="animation-delay:1.4s" onclick="fetchAI('100.HK')"><div class="sym">100.HK 🔴</div><div class="act">-71.9% MINIMAX暴跌。AI概念退潮+竞争加剧，建议止损换仓至优质中概。</div><span class="tag tag-bear">建议止损</span></div>
   </div>
+  <!-- RECOMMENDATIONS -->
+  <div id="rec-strip" style="padding:0 12px 12px;display:flex;gap:12px;overflow-x:auto;z-index:5">
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">SMH 📡</div><div class="act">半导体 ETF，现价 $504 低于成本 $538。AI 芯片周期远未见顶，建议逢低加仓 5-10 股。</div><span class="tag tag-bull">短期 · 加仓</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">2824.HK 🥇</div><div class="act">黄金 ETF，现价 $9.28 低于成本 $15。地缘风险+降息预期利好黄金，建议分批加仓 2000 股。</div><span class="tag tag-bull">中期 · 加仓</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">TLT 📉</div><div class="act">20 年美债 ETF，+4.2% 稳健。降息周期下长债弹性最大，建议加仓至 100 股。</div><span class="tag tag-bull">长期 · 配置</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">981.HK 🇨🇳</div><div class="act">中芯国际 +11.3%，国产替代加速。建议持有观察，若回调至 HK$55 加仓。</div><span class="tag tag-hold">中期 · 持有</span></div>
+  </div>
 </div>
 
 <script>
@@ -236,6 +243,14 @@ function refreshAllCharts(){
 // Init with defaults, then fetch live
 ({all:allPos,us:usPos,hk:hkPos}=calcAllPos(defaultPrices));
 gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
+// Initial HK list render
+(function initHKList(){
+  const hkl=document.getElementById('hk-list');hkl.innerHTML='';
+  for(const p of portfolio.hkPositions){
+    const px=defaultPrices[p.sym]||0;const r=((px-p.cost)/p.cost*100).toFixed(1);const c=r>=0?'up':'dn';
+    hkl.innerHTML+=`<div class="hk-row"><span class="sym">${p.sym}</span><span>${p.name}</span><span>${p.qty}股</span><span>HK$${px.toFixed(1)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+  }
+})();
 fetchPrices();
 setInterval(fetchPrices,300000); // every 5 min
 
