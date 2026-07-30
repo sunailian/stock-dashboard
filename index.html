@@ -42,7 +42,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 /* Left panels */
 #sector-panel{position:absolute;top:70px;left:12px;width:336px;height:260px}
 #rank-panel{position:absolute;top:342px;left:12px;width:336px;height:260px}
-#risk-panel{position:absolute;top:614px;left:12px;width:336px;height:240px}
+#us-panel{position:absolute;top:614px;left:12px;width:336px;height:240px}
 /* Right panels */
 #alloc-panel{position:absolute;top:70px;right:12px;width:336px;height:260px}
 #perf-panel{position:absolute;top:342px;right:12px;width:336px;height:260px}
@@ -79,6 +79,19 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .hk-row .sym{color:var(--orange);width:80px}
 .hk-row .pnl{text-align:right}
 .hk-row .up{color:var(--green)}.hk-row .dn{color:var(--red)}
+/* Stock tables */
+.stock-table{width:100%;border-collapse:collapse;font-size:11px}
+.stock-table th{text-align:left;padding:5px 18px;color:var(--orange);font-weight:400;font-size:10px;letter-spacing:1px;border-bottom:1px solid rgba(255,80,0,.2);position:sticky;top:0;background:var(--panel);z-index:1}
+.stock-table td{padding:5px 18px;border-bottom:1px solid rgba(255,255,255,.03)}
+.stock-table .up{color:var(--green)}.stock-table .dn{color:var(--red)}
+/* Rec panel */
+#rec-panel{margin:0 12px;position:relative;z-index:5}
+#rec-panel .panel-title{padding:14px 18px 8px}
+#rec-strip{display:flex;gap:12px;overflow-x:auto;padding:4px 18px 14px}
+@media(max-width:768px){
+  #rec-strip{flex-wrap:wrap}
+  #rec-panel{margin:0}
+}
 /* ── H5 Mobile ── */
 @media(max-width:768px){
   body{overflow-y:auto;display:block;height:auto}
@@ -93,7 +106,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #hero .sub-kpis{flex-wrap:wrap;gap:16px}
   #hero .sub-kpi .val{font-size:18px}
   #hero .progress-wrap{width:100%}
-  #trend-chart,#sector-panel,#rank-panel,#risk-panel,#alloc-panel,#perf-panel,#hk-panel{position:static!important;width:100%!important;height:240px!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;margin:0!important}
+  #trend-chart,#sector-panel,#rank-panel,#us-panel,#alloc-panel,#perf-panel,#hk-panel{position:static!important;width:100%!important;height:280px!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;margin:0!important}
+  #rec-panel{position:static!important;width:100%!important;left:auto!important;right:auto!important;margin:0!important}
+  #us-list,#hk-list{height:auto!important;max-height:300px}
   #ai-strip{position:static;height:auto;flex-wrap:wrap}
   .ai-card{min-width:100%}
   #particles{display:none}
@@ -102,7 +117,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #loading{display:none!important}
 }
 @media(max-width:480px){
-  #trend-chart,#sector-panel,#rank-panel,#risk-panel,#alloc-panel,#perf-panel,#hk-panel{height:200px!important}
+  #trend-chart,#sector-panel,#rank-panel,#us-panel,#alloc-panel,#perf-panel,#hk-panel{height:220px!important}
   #hero .kpi{font-size:32px}
   #hero .sub-kpis{gap:10px}
 }
@@ -140,13 +155,24 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <!-- LEFT -->
   <div class="panel" id="sector-panel"><div class="panel-title">板块分布 · SECTOR</div><div class="chart-wrap" id="chart-sector"></div></div>
   <div class="panel" id="rank-panel"><div class="panel-title">盈利排行 · TOP GAINERS</div><div class="chart-wrap" id="chart-rank"></div></div>
-  <div class="panel" id="risk-panel"><div class="panel-title">风险监控 · RISK ALERTS</div><div class="chart-wrap" id="chart-risk"></div></div>
+  <div class="panel" id="us-panel"><div class="panel-title">美股明细 · US DETAIL</div><div id="us-list" style="overflow-y:auto;height:calc(100% - 40px)"></div></div>
 
   <!-- RIGHT -->
   <div class="panel" id="alloc-panel"><div class="panel-title">持仓占比 · ALLOCATION</div><div class="chart-wrap" id="chart-alloc"></div></div>
   <div class="panel" id="perf-panel"><div class="panel-title">收益率分布 · P&L SPECTRUM</div><div class="chart-wrap" id="chart-perf"></div></div>
   <div class="panel" id="hk-panel"><div class="panel-title">港股明细 · HK DETAIL</div><div id="hk-list" style="overflow-y:auto;height:calc(100% - 40px);padding-top:4px"></div></div>
 
+  <!-- RECOMMENDATIONS -->
+  <div class="panel" id="rec-panel">
+    <div class="panel-title">🔥 个股推荐 · RECOMMENDATIONS</div>
+    <div id="rec-strip">
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">SMH 📡</div><div class="act">半导体 ETF，现价 $504 低于成本 $538。AI 芯片周期远未见顶，建议逢低加仓 5-10 股。</div><span class="tag tag-bull">短期 · 加仓</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">2824.HK 🥇</div><div class="act">黄金 ETF，现价 $9.28 低于成本 $15。地缘风险+降息预期利好黄金，建议分批加仓 2000 股。</div><span class="tag tag-bull">中期 · 加仓</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">TLT 📉</div><div class="act">20 年美债 ETF，+4.2% 稳健。降息周期下长债弹性最大，建议加仓至 100 股。</div><span class="tag tag-bull">长期 · 配置</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">981.HK 🇨🇳</div><div class="act">中芯国际 +11.3%，国产替代加速。建议持有观察，若回调至 HK$55 加仓。</div><span class="tag tag-hold">中期 · 持有</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">PAAS ⛏️</div><div class="act">白银矿企 -0.8% 成本附近。贵金属牛市周期，建议加仓至 200 股作为抗通胀配置。</div><span class="tag tag-bull">长期 · 配置</span></div>
+    </div>
+  </div>
   <!-- BOTTOM AI -->
   <div id="ai-strip">
     <div class="ai-card fade-up" style="animation-delay:.8s" onclick="fetchAI('GOOG')"><div class="sym">GOOG 🎯</div><div class="act">+59.9% 远超目标。Alphabet 广告+云双引擎强劲，建议持有但可逐步减仓锁利 20-30%。</div><span class="tag tag-hold">持有 · 锁利</span></div>
@@ -156,13 +182,6 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="ai-card fade-up" style="animation-delay:1.2s" onclick="fetchAI('APPX')"><div class="sym">APPX 🔴</div><div class="act">-76.5% 杠杆ETF重创。2倍杠杆不适合长期持有，建议立即清仓止损。</div><span class="tag tag-bear">立即止损</span></div>
     <div class="ai-card fade-up" style="animation-delay:1.3s" onclick="fetchAI('NVDA')"><div class="sym">NVDA 📈</div><div class="act">+1.2% 成本区。AI芯片龙头地位稳固，B系列量产在即，建议逢低加仓。</div><span class="tag tag-bull">逢低加仓</span></div>
     <div class="ai-card fade-up" style="animation-delay:1.4s" onclick="fetchAI('100.HK')"><div class="sym">100.HK 🔴</div><div class="act">-71.9% MINIMAX暴跌。AI概念退潮+竞争加剧，建议止损换仓至优质中概。</div><span class="tag tag-bear">建议止损</span></div>
-  </div>
-  <!-- RECOMMENDATIONS -->
-  <div id="rec-strip" style="padding:0 12px 12px;display:flex;gap:12px;overflow-x:auto;z-index:5">
-    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">SMH 📡</div><div class="act">半导体 ETF，现价 $504 低于成本 $538。AI 芯片周期远未见顶，建议逢低加仓 5-10 股。</div><span class="tag tag-bull">短期 · 加仓</span></div>
-    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">2824.HK 🥇</div><div class="act">黄金 ETF，现价 $9.28 低于成本 $15。地缘风险+降息预期利好黄金，建议分批加仓 2000 股。</div><span class="tag tag-bull">中期 · 加仓</span></div>
-    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">TLT 📉</div><div class="act">20 年美债 ETF，+4.2% 稳健。降息周期下长债弹性最大，建议加仓至 100 股。</div><span class="tag tag-bull">长期 · 配置</span></div>
-    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">981.HK 🇨🇳</div><div class="act">中芯国际 +11.3%，国产替代加速。建议持有观察，若回调至 HK$55 加仓。</div><span class="tag tag-hold">中期 · 持有</span></div>
   </div>
 </div>
 
@@ -219,12 +238,21 @@ function refreshAllCharts(){
   const bins={'>+50%':0,'+20~50%':0,'0~20%':0,'-10~0%':0,'-30~-10%':0,'<-30%':0};
   for(const p of d){const r=p.ret;if(r>50)bins['>+50%']++;else if(r>=20)bins['+20~50%']++;else if(r>=0)bins['0~20%']++;else if(r>=-10)bins['-10~0%']++;else if(r>=-30)bins['-30~-10%']++;else bins['<-30%']++}
   chartPerf.setOption({series:[{data:Object.values(bins).map(v=>({value:v,itemStyle:{color:v>2?'#00e676':v>0?'#ff6a00':'#ff3d3d'}}))}]});
+  // US list
+  const usList=document.getElementById('us-list');
+  usList.innerHTML='<table class="stock-table"><thead><tr><th>代码</th><th>名称</th><th>持仓</th><th>成本</th><th>现价</th><th>盈亏%</th></tr></thead><tbody>';
+  for(const p of d.filter(x=>!x.sym.includes('.HK'))){
+    const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
+    usList.innerHTML+=`<tr><td>${p.sym}</td><td>${p.name}</td><td>${p.qty}</td><td>$${p.cost.toFixed(2)}</td><td>$${p.price.toFixed(2)}</td><td class="${c}">${r>=0?'+':''}${r}%</td></tr>`;
+  }
+  usList.innerHTML+='</tbody></table>';
   // HK list
-  const hkList=document.getElementById('hk-list');hkList.innerHTML='';
+  const hkList=document.getElementById('hk-list');hkList.innerHTML='<table class="stock-table"><thead><tr><th>代码</th><th>名称</th><th>持仓</th><th>成本</th><th>现价</th><th>盈亏%</th></tr></thead><tbody>';
   for(const p of d.filter(x=>x.sym.includes('.HK'))){
     const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
-    hkList.innerHTML+=`<div class="hk-row"><span class="sym">${p.sym}</span><span>${p.name}</span><span>${p.qty}股</span><span>HK$${p.price.toFixed(1)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+    hkList.innerHTML+=`<tr><td>${p.sym}</td><td>${p.name}</td><td>${p.qty}</td><td>HK$${p.cost.toFixed(2)}</td><td>HK$${p.price.toFixed(2)}</td><td class="${c}">${r>=0?'+':''}${r}%</td></tr>`;
   }
+  hkList.innerHTML+='</tbody></table>';
 }
 
 // ── Init: always fetch live first, fallback to defaults ──
@@ -309,11 +337,6 @@ for(const p of allPos){const r=p.ret;if(r>50)retBins['>+50%']++;else if(r>=20)re
 const chartPerf=echarts.init(document.getElementById('chart-perf'));
 chartPerf.setOption({tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5'}},grid:{left:40,right:20,top:20,bottom:20},xAxis:{type:'category',data:Object.keys(retBins),axisLabel:{color:'#8a7e72',fontSize:9,rotate:15}},yAxis:{type:'value',axisLabel:{color:'#8a7e72',fontSize:9},splitLine:{lineStyle:{color:'rgba(255,255,255,.03)'}}},series:[{type:'bar',data:Object.values(retBins).map(v=>({value:v,itemStyle:{color:v>2?'#00e676':v>0?'#ff6a00':'#ff3d3d'}})),barWidth:20,itemStyle:{borderRadius:[2,2,0,0]}}]});
 
-// ── Risk Gauge ──
-const chartRisk=echarts.init(document.getElementById('chart-risk'));
-const riskScore=Math.round(100-(portfolio.totalReturn*2)+15); // lower=better
-chartRisk.setOption({series:[{type:'gauge',startAngle:210,endAngle:-30,center:['50%','60%'],radius:'90%',min:0,max:100,axisLine:{show:true,lineStyle:{width:12,color:[[0.4,'#00e676'],[0.7,'#ffc107'],[1,'#ff3d3d']]}},axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},detail:{valueAnimation:true,formatter:'{value}',color:'#fff',fontSize:28,offsetCenter:[0,'60%']},data:[{value:riskScore,name:'风险指数'}]}]});
-
 // ── HK List ──
 const hkList=document.getElementById('hk-list');
 // AI fetch on card click
@@ -346,7 +369,7 @@ const panels=document.querySelectorAll('.panel');
 panels.forEach((p,i)=>setTimeout(()=>p.classList.add('fade-up'),300+i*100));
 
 // ── Resize ──
-window.addEventListener('resize',()=>{scale();[chartTrend,chartSector,chartRank,chartAlloc,chartPerf,chartRisk].forEach(c=>c.resize())});
+window.addEventListener('resize',()=>{scale();[chartTrend,chartSector,chartRank,chartAlloc,chartPerf].forEach(c=>c.resize())});
 
 // ── Number animations on load ──
 setTimeout(()=>{
