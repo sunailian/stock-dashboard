@@ -9,7 +9,7 @@
 :root{--bg:#0a0806;--panel:rgba(20,16,12,.85);--border:rgba(255,80,0,.15);--orange:#ff5000;--orange2:#ff6a00;--orange3:#ff8a00;--cyan:#00e5ff;--amber:#ffc107;--red:#ff3d3d;--green:#00e676;--text:#c8beb5;--text2:#8a7e72;--glow:rgba(255,80,0,.08)}
 *{margin:0;padding:0;box-sizing:border-box}
 @font-face{font-family:'Mono';src:local('Menlo'),local('Consolas'),local('monospace')}
-body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;height:100vh}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;overflow-y:auto;height:100vh}
 #stage{width:1920px;height:1080px;position:fixed;top:0;left:0;transform-origin:top left;background:radial-gradient(ellipse at 50% 30%,rgba(255,80,0,.06) 0%,transparent 70%),radial-gradient(ellipse at 80% 80%,rgba(255,106,0,.04) 0%,transparent 50%)}
 #stage::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,80,0,.015) 2px,rgba(255,80,0,.015) 4px);pointer-events:none;z-index:100;opacity:.3}
 #particles{position:absolute;inset:0;z-index:0;pointer-events:none}
@@ -99,7 +99,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .ai-card .sym{font-size:15px;font-weight:700;color:var(--orange)}  
 .ai-card .act{font-size:11px;margin-top:3px;line-height:1.4;color:var(--text)}
 .ai-card .tag{display:inline-block;font-size:8px;padding:2px 7px;border-radius:2px;margin-top:5px;letter-spacing:1px}
-@media(max-width:768px){#rec-panel{position:static!important;margin:0!important;height:auto!important}}
+@media(max-width:768px){#rec-panel{position:static!important;margin:0!important;height:auto!important;overflow:visible!important}
+#rec-strip{flex-wrap:wrap;overflow:visible}
+#ai-panel{position:static!important;margin:0!important;height:auto!important;overflow:visible!important}
+#ai-strip{flex-wrap:wrap;overflow:visible}
+.ai-card{min-width:100%!important;max-width:100%!important}}
 /* ── H5 Mobile ── */
 @media(max-width:768px){
   html{overflow-x:hidden;height:auto}
