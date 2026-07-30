@@ -324,7 +324,7 @@ fetchPrices(true);
 setInterval(()=>fetchPrices(),300000);
 
 // ── Scaling (desktop only) ──
-function scale(){if(window.innerWidth<=768)return;const s=document.getElementById('stage'),w=window.innerWidth,h=window.innerHeight,r=Math.min(w/1920,h/1040);if(r>=1){s.style.transform='';s.style.left='';s.style.top='';return}s.style.transform=`scale(${r})`;s.style.left=`${(w-1920*r)/2}px`;s.style.top=`${(h-1080*r)/2}px`}
+function scale(){if(window.innerWidth<=768)return;const s=document.getElementById('stage'),w=window.innerWidth,h=window.innerHeight-40,r=Math.min(w/1920,h/1040);s.style.transform=`scale(${r})`;s.style.left=`${(w-1920*r)/2}px`;s.style.top=`${(h-1080*r)/2}px`}
 window.addEventListener('resize',scale);scale();
 
 // ── Particles ──
