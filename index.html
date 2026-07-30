@@ -122,13 +122,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
   <!-- BOTTOM AI -->
   <div id="ai-strip">
-    <div class="ai-card fade-up" style="animation-delay:.8s"><div class="sym">GOOG 🎯</div><div class="act">+59.9% 远超目标。Alphabet 广告+云双引擎强劲，建议持有但可逐步减仓锁利 20-30%。</div><span class="tag tag-hold">持有 · 锁利</span></div>
-    <div class="ai-card fade-up" style="animation-delay:.9s"><div class="sym">AAPL 🎯</div><div class="act">+61.7% 超额完成。Vision Pro 生态+服务收入增长，估值偏高可分批止盈。</div><span class="tag tag-hold">持有 · 止盈</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1s"><div class="sym">MSFT 🟡</div><div class="act">+15.5% 接近目标。Azure+AI 增长确定性高，建议继续持有等待达标。</div><span class="tag tag-bull">持有 · 等待</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1.1s"><div class="sym">TSLA 🔴</div><div class="act">-25.1% 触发止损。盈利能力承压，建议止损或大幅减仓至 10 股以下观察。</div><span class="tag tag-bear">建议止损</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1.2s"><div class="sym">APPX 🔴</div><div class="act">-76.5% 杠杆ETF重创。2倍杠杆不适合长期持有，建议立即清仓止损。</div><span class="tag tag-bear">立即止损</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1.3s"><div class="sym">NVDA 📈</div><div class="act">+1.2% 成本区。AI芯片龙头地位稳固，B系列量产在即，建议逢低加仓。</div><span class="tag tag-bull">逢低加仓</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1.4s"><div class="sym">100.HK 🔴</div><div class="act">-71.9% MINIMAX暴跌。AI概念退潮+竞争加剧，建议止损换仓至优质中概。</div><span class="tag tag-bear">建议止损</span></div>
+    <div class="ai-card fade-up" style="animation-delay:.8s" onclick="fetchAI('GOOG')"><div class="sym">GOOG 🎯</div><div class="act">+59.9% 远超目标。Alphabet 广告+云双引擎强劲，建议持有但可逐步减仓锁利 20-30%。</div><span class="tag tag-hold">持有 · 锁利</span></div>
+    <div class="ai-card fade-up" style="animation-delay:.9s" onclick="fetchAI('AAPL')"><div class="sym">AAPL 🎯</div><div class="act">+61.7% 超额完成。Vision Pro 生态+服务收入增长，估值偏高可分批止盈。</div><span class="tag tag-hold">持有 · 止盈</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1s" onclick="fetchAI('MSFT')"><div class="sym">MSFT 🟡</div><div class="act">+15.5% 接近目标。Azure+AI 增长确定性高，建议继续持有等待达标。</div><span class="tag tag-bull">持有 · 等待</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.1s" onclick="fetchAI('TSLA')"><div class="sym">TSLA 🔴</div><div class="act">-25.1% 触发止损。盈利能力承压，建议止损或大幅减仓至 10 股以下观察。</div><span class="tag tag-bear">建议止损</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.2s" onclick="fetchAI('APPX')"><div class="sym">APPX 🔴</div><div class="act">-76.5% 杠杆ETF重创。2倍杠杆不适合长期持有，建议立即清仓止损。</div><span class="tag tag-bear">立即止损</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.3s" onclick="fetchAI('NVDA')"><div class="sym">NVDA 📈</div><div class="act">+1.2% 成本区。AI芯片龙头地位稳固，B系列量产在即，建议逢低加仓。</div><span class="tag tag-bull">逢低加仓</span></div>
+    <div class="ai-card fade-up" style="animation-delay:1.4s" onclick="fetchAI('100.HK')"><div class="sym">100.HK 🔴</div><div class="act">-71.9% MINIMAX暴跌。AI概念退潮+竞争加剧，建议止损换仓至优质中概。</div><span class="tag tag-bear">建议止损</span></div>
   </div>
 </div>
 
@@ -158,7 +158,7 @@ const portfolio={
   ]
 };
 
-// Default prices (fallback) + live fetch flag
+const API_BASE='https://stock-dashboard-ydmplntsru.cn-hangzhou.fcapp.run';
 let allPos=[],gainers=[],priceTime='';
 const defaultPrices={GOOG:335.76,AAPL:338.19,MSFT:390.54,NVDA:190.01,TSLA:298.32,BABA:115.03,PAAS:42.55,TLT:82.85,SMH:504.22,APPX:23.04,'9988.HK':113.60,'981.HK':67.20,'6030.HK':27.78,'100.HK':212.80,'2824.HK':9.28};
 
@@ -175,42 +175,17 @@ function calcAllPos(prices){
 }
 
 async function fetchPrices(){
-  const usCodes=portfolio.usPositions.map(p=>p.sym.split('.')[0].toLowerCase());
-  const hkCodes=portfolio.hkPositions.map(p=>p.sym.split('.')[0].padStart(5,'0'));
-  const sinaCodes=['gb_'+usCodes.join(',gb_'),'hk'+hkCodes.join(',hk')].join(',');
-  // Try direct first, fall back to CORS proxy (replace with Alibaba Cloud FC proxy later)
-  const urls=[
-    'https://hq.sinajs.cn/list='+sinaCodes,
-    'https://api.allorigins.win/raw?url='+encodeURIComponent('http://hq.sinajs.cn/list='+sinaCodes)
-  ];
-  for(const url of urls){
-    try{
-      const resp=await fetch(url,{headers:{Referer:'https://finance.sina.com.cn'}});
-      if(!resp.ok)continue;
-      const raw=await resp.text();
-      const prices={};
-      for(const line of raw.split('\n')){
-        if(!line.includes('='))continue;
-        const varPart=line.split('=')[0];
-        const parts=line.split('"')[1]?.split(',');
-        if(!parts||!parts[1])continue;
-        if(varPart.includes('gb_')){
-          prices[varPart.split('_').pop().toUpperCase()+'.US']=parseFloat(parts[1])||0;
-        }else{
-          prices[parseInt(varPart.split('hk').pop())+'.HK']=parseFloat(parts[3])||0;
-        }
-      }
-      if(Object.keys(prices).length>=5){
-        const result=calcAllPos(prices);
-        allPos=result.all;gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
-        priceTime=new Date().toLocaleTimeString('zh-CN',{hour12:false});
-        refreshAllCharts();
-        document.getElementById('live-label').textContent='LIVE '+priceTime;
-        return;
-      }
-    }catch(e){}
-  }
-  console.log('All price sources failed, using defaults');
+  try{
+    const resp=await fetch(API_BASE+'/prices');
+    const data=await resp.json();
+    if(data.prices && Object.keys(data.prices).length>=5){
+      const result=calcAllPos(data.prices);
+      allPos=result.all;gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
+      priceTime=data.updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
+      refreshAllCharts();
+      document.getElementById('live-label').textContent='LIVE '+priceTime;
+    }
+  }catch(e){console.log('Price fetch:',e)}
 }
 
 function refreshAllCharts(){
@@ -292,7 +267,29 @@ chartRisk.setOption({series:[{type:'gauge',startAngle:210,endAngle:-30,center:['
 
 // ── HK List ──
 const hkList=document.getElementById('hk-list');
-for(const p of portfolio.hkPositions){const r=((p.price-p.cost)/p.cost*100).toFixed(1);const c=r>=0?'up':'dn';hkList.innerHTML+=`<div class="hk-row"><span class="sym">${p.sym}</span><span>${p.name}</span><span>${p.qty}股</span><span>HK$${p.price.toFixed(1)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`}
+// AI fetch on card click
+async function fetchAI(symbol){
+  const cards=document.querySelectorAll('.ai-card');
+  cards.forEach(c=>c.style.opacity='.5');
+  try{
+    const resp=await fetch(API_BASE+'/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,type:'stock'})});
+    const data=await resp.json();
+    if(data.analysis){
+      // Update card content
+      const strip=document.getElementById('ai-strip');
+      const existing=[...strip.querySelectorAll('.sym')].find(s=>s.textContent.includes(symbol));
+      if(existing){
+        existing.nextElementSibling.textContent=data.analysis;
+        const tag=existing.parentElement.querySelector('.tag');
+        if(data.analysis.includes('止损')){tag.className='tag tag-bear';tag.textContent='止损'}
+        else if(data.analysis.includes('加仓')){tag.className='tag tag-bull';tag.textContent='加仓'}
+        else if(data.analysis.includes('减仓')){tag.className='tag tag-hold';tag.textContent='减仓'}
+        else{tag.className='tag tag-hold';tag.textContent='持有'}
+      }
+    }
+  }catch(e){console.log('AI fetch:',e)}
+  cards.forEach(c=>c.style.opacity='1');
+}
 
 // ── Animations ──
 setTimeout(()=>document.getElementById('loading').classList.add('hidden'),800);
