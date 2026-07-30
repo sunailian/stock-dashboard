@@ -74,19 +74,18 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 /* Glow cursor */
 #glow-cursor{position:fixed;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(255,80,0,.06),transparent 70%);pointer-events:none;z-index:300;transform:translate(-50%,-50%);transition:opacity .3s}
 @media(prefers-reduced-motion:reduce){.fade-up{animation:none}#live-dot{animation:none}#loading .spinner{animation:none}}
-/* HK stock list */
-.hk-row{display:flex;justify-content:space-between;padding:6px 18px;font-size:11px;border-bottom:1px solid rgba(255,255,255,.03)}
-.hk-row .sym{color:var(--orange);width:80px}
-.hk-row .pnl{text-align:right}
-.hk-row .up{color:var(--green)}.hk-row .dn{color:var(--red)}
 /* Stock tables */
-.stock-table{width:100%;border-collapse:collapse;font-size:11px}
-.stock-table th{text-align:left;padding:5px 18px;color:var(--orange);font-weight:400;font-size:10px;letter-spacing:1px;border-bottom:1px solid rgba(255,80,0,.2);position:sticky;top:0;background:var(--panel);z-index:1}
-.stock-table td{padding:5px 18px;border-bottom:1px solid rgba(255,255,255,.03)}
+.stock-table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
+.stock-table th{text-align:left;padding:5px 8px;color:var(--orange);font-weight:400;font-size:10px;letter-spacing:1px;border-bottom:1px solid rgba(255,80,0,.2)}
+.stock-table td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.03);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stock-table td:nth-child(1){width:15%}.stock-table td:nth-child(2){width:28%}.stock-table td:nth-child(3){width:10%}
+.stock-table td:nth-child(4){width:16%}.stock-table td:nth-child(5){width:16%}.stock-table td:nth-child(6){width:15%;text-align:right}
+.stock-table th:nth-child(6){text-align:right}
 .stock-table .up{color:var(--green)}.stock-table .dn{color:var(--red)}
-/* Table panels override overflow */
-#us-panel,#hk-panel{overflow-y:auto!important}
-#us-panel .panel-title,#hk-panel .panel-title{position:sticky;top:0;z-index:2;background:var(--panel)}
+/* Table panels */
+#us-panel,#hk-panel{overflow-y:auto!important;overflow-x:hidden}
+#us-panel .panel-title,#hk-panel .panel-title{position:sticky;top:0;z-index:2;background:var(--panel);padding-bottom:8px}
+#us-panel,#hk-panel{padding-bottom:8px}
 /* Rec panel */
 #rec-panel{margin:0 12px;position:relative;z-index:5}
 #rec-panel .panel-title{padding:14px 18px 8px}
@@ -340,8 +339,6 @@ for(const p of allPos){const r=p.ret;if(r>50)retBins['>+50%']++;else if(r>=20)re
 const chartPerf=echarts.init(document.getElementById('chart-perf'));
 chartPerf.setOption({tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5'}},grid:{left:40,right:20,top:20,bottom:20},xAxis:{type:'category',data:Object.keys(retBins),axisLabel:{color:'#8a7e72',fontSize:9,rotate:15}},yAxis:{type:'value',axisLabel:{color:'#8a7e72',fontSize:9},splitLine:{lineStyle:{color:'rgba(255,255,255,.03)'}}},series:[{type:'bar',data:Object.values(retBins).map(v=>({value:v,itemStyle:{color:v>2?'#00e676':v>0?'#ff6a00':'#ff3d3d'}})),barWidth:20,itemStyle:{borderRadius:[2,2,0,0]}}]});
 
-// ── HK List ──
-const hkList=document.getElementById('hk-list');
 // AI fetch on card click
 async function fetchAI(symbol){
   const cards=document.querySelectorAll('.ai-card');
