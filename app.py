@@ -47,11 +47,22 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
     def _route(self, method):
         path = urlparse(self.path).path.rstrip('/') or '/'
-        # strip FC proxy prefix like /2016-08-15/proxy/... or /function-name/
         for seg in ['/prices', '/health', '/ai']:
             if path.endswith(seg) or seg in path:
                 return seg
         return path
+
+    def _parse_event(self):
+        """FC event function mode: reads original request from POST /invoke body"""
+        cl = int(self.headers.get('Content-Length', 0))
+        if cl > 0:
+            try:
+                event = json.loads(self.rfile.read(cl))
+                self._event_body = event.get('body', '')
+                return event
+            except: pass
+        return {}
+
     def do_GET(self):
         path = self._route('GET')
         if path == '/health': self._send(200, {'status': 'ok', 'routes': ['/prices','/ai']})
@@ -59,14 +70,40 @@ class Handler(BaseHTTPRequestHandler):
             try: self._send(200, get_prices())
             except Exception as e: self._send(500, {'error': str(e)})
         else: self._send(404, {'error': 'not found', 'path': urlparse(self.path).path})
+
     def do_POST(self):
-        cl = int(self.headers.get('Content-Length', 0))
-        body = json.loads(self.rfile.read(cl)) if cl > 0 else {}
         path = self._route('POST')
-        if path == '/ai':
-            try: self._send(200, get_ai(body))
-            except Exception as e: self._send(500, {'error': str(e)})
-        else: self._send(404, {'error': 'not found', 'path': urlparse(self.path).path})
+        # FC event mode: POST /invoke with the actual request in body
+        if path != '/ai' and path != '/prices' and path != '/health':
+            event = self._parse_event()
+            if event:
+                rpath = event.get('path', event.get('rawPath', ''))
+                if 'health' in rpath:
+                    self._send(200, {'status': 'ok', 'routes': ['/prices','/ai'], 'mode': 'event'})
+                    return
+                if 'prices' in rpath:
+                    self._send(200, get_prices())
+                    return
+                if 'ai' in rpath or event.get('httpMethod') == 'POST':
+                    body = event.get('body', '{}')
+                    if isinstance(body, str):
+                        try: body = json.loads(body)
+                        except: body = {}
+                    self._send(200, get_ai(body))
+                    return
+            # fallback: normal POST
+            cl = int(self.headers.get('Content-Length', 0))
+            body = json.loads(self.rfile.read(cl)) if cl > 0 else {}
+            if path == '/ai' or '/ai' in urlparse(self.path).path:
+                self._send(200, get_ai(body))
+                return
+        else:
+            cl = int(self.headers.get('Content-Length', 0))
+            body = json.loads(self.rfile.read(cl)) if cl > 0 else {}
+            if path == '/ai':
+                self._send(200, get_ai(body))
+                return
+        self._send(404, {'error': 'not found', 'path': urlparse(self.path).path})
     def log_message(self, *args): pass  # silent
 
 if __name__ == '__main__':
