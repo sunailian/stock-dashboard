@@ -411,18 +411,20 @@ function refreshAllCharts(){
   const usData=d.filter(x=>!x.sym.includes('.HK'));
   for(const p of usData){
     const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
-    usList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">¥${(p.cost*p.fx).toFixed(0)}</span><span class="price">¥${(p.price*p.fx).toFixed(0)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+    usList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
   }
   // HK list
   const hkList=document.getElementById('hk-list');hkList.innerHTML='';
   const hkData=d.filter(x=>x.sym.includes('.HK'));
   for(const p of hkData){
     const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
-    hkList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">¥${(p.cost*p.fx).toFixed(0)}</span><span class="price">¥${(p.price*p.fx).toFixed(0)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+    hkList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
   }
 }
 
 let detailChart=null;
+function nativeCurrency(ccy){return ccy==='USD'?'$':'HK$'}
+function formatNativePrice(value,ccy){return nativeCurrency(ccy)+Number(value).toFixed(2)}
 function getStockAdvice(p){
   const ret=p.ret;
   const reduce=p.sector==='杠杆ETF'||ret<=-30||ret>=50;
@@ -433,31 +435,30 @@ function getStockAdvice(p){
 }
 function openStockDetail(symbol){
   const p=allPos.find(x=>x.sym===symbol);if(!p)return;
-  const ret=p.ret;
-  const costCny=Math.abs(p.cost)*p.fx, priceCny=p.price*p.fx;
-  const costLabel=p.cost>0?'¥'+costCny.toFixed(0):'负成本';
-  const pnlCny=p.pnlCny;
-  const pnlLabel=(pnlCny>=0?'+':'-')+'¥'+Math.abs(pnlCny).toLocaleString(undefined,{maximumFractionDigits:0});
+  const ret=p.ret,currency=nativeCurrency(p.ccy);
+  const costLabel=p.cost>0?formatNativePrice(p.cost,p.ccy):'负成本';
+  const pnl=p.pnl;
+  const pnlLabel=(pnl>=0?'+':'-')+currency+Math.abs(pnl).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   const advice=getStockAdvice(p);
   const buyBase=p.price*(ret<=-20?.92:.96),sellBase=p.price*(ret>=30?1.06:1.12);
   document.getElementById('stock-detail-title').firstChild.textContent=p.sym+' ';
   document.getElementById('stock-detail-name').textContent=p.name;
   document.getElementById('detail-cost').textContent=costLabel;
-  document.getElementById('detail-price').textContent='¥'+priceCny.toFixed(0);
+  document.getElementById('detail-price').textContent=formatNativePrice(p.price,p.ccy);
   document.getElementById('detail-pnl').textContent=pnlLabel;
-  document.getElementById('detail-pnl').className=' '+(pnlCny>=0?'up':'dn');
+  document.getElementById('detail-pnl').className=' '+(pnl>=0?'up':'dn');
   document.getElementById('detail-ret').textContent=(ret>=0?'+':'')+ret.toFixed(1)+'%';
   document.getElementById('detail-ret').className=' '+(ret>=0?'up':'dn');
   const actionEl=document.getElementById('detail-action');actionEl.textContent=advice.action;actionEl.className='stock-action '+advice.tone;
   document.getElementById('detail-analysis').textContent=advice.analysis;
-  document.getElementById('detail-buy-zone').textContent='¥'+(buyBase*p.fx).toFixed(0)+' 附近';
-  document.getElementById('detail-sell-zone').textContent='¥'+(sellBase*p.fx).toFixed(0)+' 附近';
+  document.getElementById('detail-buy-zone').textContent=formatNativePrice(buyBase,p.ccy)+' 附近';
+  document.getElementById('detail-sell-zone').textContent=formatNativePrice(sellBase,p.ccy)+' 附近';
   document.getElementById('stock-detail-modal').classList.add('open');document.body.style.overflow='hidden';
   const validCost=p.cost>0?p.cost:p.price*.78;
   const trend=Array.from({length:30},(_,i)=>{const t=i/29;const noise=Math.sin(i*1.37+p.sym.length)*Math.max(p.price*.018,Math.abs(p.price-validCost)*.025);return +(validCost+(p.price-validCost)*t+noise).toFixed(2)});
   if(detailChart)detailChart.dispose();
   detailChart=echarts.init(document.getElementById('stock-detail-chart'));
-  detailChart.setOption({animationDuration:500,tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.96)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11},valueFormatter:v=>'¥'+Number(v*p.fx).toFixed(0)},grid:{left:42,right:18,top:18,bottom:24},xAxis:{type:'category',data:trend.map((_,i)=>i===29?'现在':`-${29-i}日`),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9,interval:6}},yAxis:{type:'value',scale:true,axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>'¥'+Number(v*p.fx).toFixed(0)},splitLine:{lineStyle:{color:'rgba(255,255,255,.04)'}}},series:[{name:'模型走势',type:'line',data:trend,smooth:true,symbol:'none',lineStyle:{color:'#ff6a00',width:2},areaStyle:{color:'rgba(255,80,0,.10)'}},{name:'买入参考',type:'line',data:trend.map(()=>validCost),symbol:'none',lineStyle:{color:'rgba(0,229,255,.55)',type:'dashed',width:1}},{name:'现价',type:'line',data:trend.map(()=>p.price),symbol:'none',lineStyle:{color:'rgba(0,230,118,.65)',type:'dashed',width:1}}]});
+  detailChart.setOption({animationDuration:500,tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.96)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11},valueFormatter:v=>currency+Number(v).toFixed(2)},grid:{left:52,right:18,top:18,bottom:24},xAxis:{type:'category',data:trend.map((_,i)=>i===29?'现在':`-${29-i}日`),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9,interval:6}},yAxis:{type:'value',scale:true,axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>currency+Number(v).toFixed(2)},splitLine:{lineStyle:{color:'rgba(255,255,255,.04)'}}},series:[{name:'模型走势',type:'line',data:trend,smooth:true,symbol:'none',lineStyle:{color:'#ff6a00',width:2},areaStyle:{color:'rgba(255,80,0,.10)'}},{name:'买入参考',type:'line',data:trend.map(()=>validCost),symbol:'none',lineStyle:{color:'rgba(0,229,255,.55)',type:'dashed',width:1}},{name:'现价',type:'line',data:trend.map(()=>p.price),symbol:'none',lineStyle:{color:'rgba(0,230,118,.65)',type:'dashed',width:1}}]});
 }
 function closeStockDetail(){document.getElementById('stock-detail-modal').classList.remove('open');document.body.style.overflow='';}
 document.addEventListener('click',e=>{const row=e.target.closest('.srow');if(row)openStockDetail(row.dataset.symbol);if(e.target.id==='stock-detail-close'||e.target.id==='stock-detail-modal')closeStockDetail()});
@@ -469,10 +470,10 @@ function updateMarkets(prices){
   if(spx) document.getElementById('mkt-spx').innerHTML='S&P '+spx.toFixed(0);
   if(ixic) document.getElementById('mkt-ixic').innerHTML='NASDAQ '+ixic.toFixed(0);
 }
-function initAll(prices){
+function initAll(prices,updated=''){
   const result=calcAllPos(prices);
   allPos=result.all;gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
-  priceTime=result._updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  priceTime=updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
   refreshAllCharts();
   document.getElementById('live-label').textContent='LIVE '+priceTime;
   // Update hero numbers
@@ -490,8 +491,7 @@ async function fetchPrices(initial=false){
     const data=await resp.json();
     if(data.prices && Object.keys(data.prices).length>=5){
       updateMarkets(data.prices);
-      data._updated=data.updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
-      initAll(data);
+      initAll(data.prices,data.updated);
       return true;
     }
   }catch(e){console.log('Price fetch:',e)}
