@@ -137,6 +137,44 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #hero .kpi{font-size:32px}
   #hero .sub-kpis{gap:10px}
 }
+</style>
+<style>
+/* Responsive desktop layout: flow with the viewport instead of scaling a fixed canvas. */
+@media(min-width:769px){
+  html{min-height:100%;overflow-x:hidden;overflow-y:auto}
+  body{min-width:0;min-height:100%;height:auto;overflow-x:hidden;overflow-y:auto}
+  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 210px 246px auto auto;grid-template-areas:'header header header' 'sector hero alloc' 'rank trend perf' 'us . hk' 'rec rec rec' 'ai ai ai';gap:12px;padding:0 12px 12px;overflow:visible}
+  #header{position:relative;grid-area:header;inset:auto;width:auto;height:auto;padding:0 12px}
+  #fs-btn{top:22px;right:12px}
+  #hero{position:relative;grid-area:hero;inset:auto;width:auto;height:auto;min-width:0}
+  #trend-chart{position:relative;grid-area:trend;inset:auto;width:auto;height:auto;min-width:0}
+  #sector-panel{position:relative;grid-area:sector;inset:auto;width:auto;height:auto}
+  #rank-panel{position:relative;grid-area:rank;inset:auto;width:auto;height:auto}
+  #us-panel{position:relative;grid-area:us;inset:auto;width:auto;height:auto;min-height:246px;overflow-y:auto}
+  #alloc-panel{position:relative;grid-area:alloc;inset:auto;width:auto;height:auto}
+  #perf-panel{position:relative;grid-area:perf;inset:auto;width:auto;height:auto}
+  #hk-panel{position:relative;grid-area:hk;inset:auto;width:auto;height:auto;min-height:246px;overflow-y:auto}
+  #rec-panel{position:relative;grid-area:rec;inset:auto;width:auto;height:auto;min-height:110px}
+  #ai-panel{position:relative;grid-area:ai;inset:auto;width:auto;height:auto;min-height:90px}
+  #rec-strip,#ai-strip{overflow:visible}
+  #particles{inset:0;width:100%;height:100%;overflow:hidden}
+}
+@media(min-width:769px) and (max-width:1200px){
+  #stage{grid-template-columns:260px minmax(0,1fr) 260px}
+  #header h1{font-size:17px;letter-spacing:2px}
+  #header .sub{display:none}
+  #hero .kpi{font-size:58px}
+  #hero .sub-kpis{gap:18px}
+  .srow{font-size:9px;padding-left:8px;padding-right:8px}
+  .srow .sym{width:58px}.srow .cost,.srow .price{width:52px}.srow .pnl{width:42px}
+}
+@media(max-width:768px){
+  #stage{min-height:100vh;padding-bottom:16px}
+  #ai-panel,#rec-panel{min-height:0}
+}
+@media(max-width:900px) and (min-width:769px){
+  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px 246px auto auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'rank perf' 'us hk' 'rec rec' 'ai ai'}
+}
 </style></head>
 <body>
 <div id="auth-overlay" style="position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px">
@@ -338,9 +376,9 @@ async function fetchPrices(initial=false){
 fetchPrices(true);
 setInterval(()=>fetchPrices(),300000);
 
-// ── Scaling (desktop only) ──
-function scale(){if(window.innerWidth<=768)return;const s=document.getElementById('stage'),w=window.innerWidth,h=window.innerHeight,r=h/900; /* height-based, readable text */ s.style.transform=`scale(${Math.min(r,w/1920)})`;s.style.left=`${Math.max(0,(w-1920*Math.min(r,w/1920))/2)}px`}
-window.addEventListener('resize',scale);scale();
+// ── Layout ──
+// The dashboard is laid out by CSS Grid; there is no fixed-canvas scaling.
+function scale(){}
 
 // ── Particles ──
 const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
