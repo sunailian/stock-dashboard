@@ -8,6 +8,13 @@ CTX.check_hostname = False
 CTX.verify_mode = False
 SINA = 'gb_goog,gb_aapl,gb_msft,gb_nvda,gb_tsla,gb_baba,gb_paas,gb_tlt,gb_smh,gb_appx,hk09988,hk00981,hk06030,hk00100,hk02824,gb_spx,gb_ixic'
 
+@app.after_request
+def no_cache(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok', 'routes': ['/health', '/prices', '/ai']})

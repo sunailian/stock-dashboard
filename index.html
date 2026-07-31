@@ -321,7 +321,7 @@ function initAll(prices){
 async function fetchPrices(initial=false){
   if(initial) document.getElementById('live-label').textContent='SYNC...';
   try{
-    const resp=await fetch(API_BASE+'/prices',{cache:'no-store'});
+    const resp=await fetch(API_BASE+'/prices?t='+Date.now(),{cache:'no-store'});
     const data=await resp.json();
     if(data.prices && Object.keys(data.prices).length>=5){
       updateMarkets(data.prices);
