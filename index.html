@@ -341,15 +341,16 @@ const portfolio={
 
 const API_BASE='https://stock-dashboard-ydmplntsru.cn-hangzhou.fcapp.run';
 let allPos=[],gainers=[],priceTime='';
-const defaultPrices={GOOG:335.76,AAPL:338.19,MSFT:390.54,NVDA:190.01,TSLA:298.32,BABA:115.03,PAAS:42.55,TLT:82.85,SMH:504.22,APPX:23.04,'9988.HK':113.60,'981.HK':67.20,'6030.HK':27.78,'100.HK':212.80,'2824.HK':9.28};
+const defaultPrices={GOOG:345.44,AAPL:302.16,MSFT:456.65,NVDA:194.96,TSLA:302.00,BABA:120.41,PAAS:42.14,TLT:82.09,SMH:536.97,APPX:20.76,'9988.HK':117.00,'981.HK':63.25,'6030.HK':27.32,'100.HK':230.60,'2824.HK':9.43};
 
 function calcAllPos(prices){
   const us=portfolio.usPositions.map(p=>{
-    const px=prices[p.sym]||defaultPrices[p.sym]||0;
+    // 接口 key 是 GOOG.US，兼容裸 GOOG 和带 .US 两种
+    const px=prices[p.sym]||prices[p.sym+'.US']||defaultPrices[p.sym]||0;
     return {...p,price:px,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/Math.abs(p.cost)*100:0)};
   });
   const hk=portfolio.hkPositions.map(p=>{
-    const px=prices[p.sym]||defaultPrices[p.sym]||0;
+    const px=prices[p.sym]||prices[p.sym+'.US']||defaultPrices[p.sym]||0;
     return {...p,price:px,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/p.cost*100:0)};
   });
   return {all:[...us,...hk],us,hk};
@@ -500,7 +501,7 @@ async function fetchPrices(initial=false){
 
 // Boot: live first, defaults if offline
 fetchPrices(true);
-setInterval(()=>fetchPrices(),300000);
+setInterval(()=>fetchPrices(),30000);
 
 // ── Layout ──
 // The dashboard is laid out by CSS Grid; there is no fixed-canvas scaling.

@@ -6,7 +6,7 @@ app = Flask(__name__)
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
 CTX.verify_mode = False
-SINA = 'gb_goog,gb_aapl,gb_msft,gb_nvda,gb_tsla,gb_baba,gb_paas,gb_tlt,gb_smh,gb_appx,hk09988,hk00981,hk06030,hk00100,hk02824,gb_spx,gb_ixic'
+SINA = 'gb_goog,gb_aapl,gb_msft,gb_nvda,gb_tsla,gb_baba,gb_paas,gb_tlt,gb_smh,gb_appx,hk09988,hk00981,hk06030,hk00100,hk02824,gb_$inx,gb_ixic'
 
 @app.after_request
 def no_cache(response):
@@ -28,12 +28,21 @@ def prices():
         prices = {}
         for line in raw.strip().split('\n'):
             if '=' not in line: continue
-            var = line.split('=')[0]; parts = line.split('"')[1].split(',')
-            if not parts[1]: continue
+            var = line.split('=')[0]
+            try:
+                parts = line.split('"')[1].split(',')
+            except IndexError:
+                continue
+            if len(parts) < 8 or not parts[1]: continue  # 空行/字段不足直接跳过
             if 'gb_' in var:
-                prices[var.split('_')[-1].upper() + '.US'] = float(parts[1])
+                # 新浪美股: [1]=现价  [2]=涨跌幅  [3]=时间
+                # gb_$inx 是标普500 -> 映射为 SPX
+                sym = var.split('_')[-1].upper()  # GOOG / $INX / IXIC
+                if sym == '$INX': sym = 'SPX'
+                prices[sym + '.US'] = float(parts[1])
             else:
-                prices[str(int(var.split('hk')[-1])) + '.HK'] = float(parts[3])
+                # 新浪港股: [1]=名称  [3]=昨收  [6]=现价  [8]=涨跌幅
+                prices[str(int(var.split('hk')[-1])) + '.HK'] = float(parts[6])
         return jsonify({'prices': prices, 'updated': time.strftime('%H:%M:%S')})
     except Exception as e:
         import traceback
