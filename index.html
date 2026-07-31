@@ -429,6 +429,7 @@ let activeDetailSymbol='';
 const DECISION_LOG_KEY='zhuoyuan_decision_log_v2';
 const LEGACY_DECISION_LOG_KEY='zhuoyuan_decision_log_v1';
 const ANALYSIS_CACHE_KEY='zhuoyuan_analysis_cache_v2';
+const PRICE_HISTORY_KEY='zhuoyuan_price_history_v1';
 function nativeCurrency(ccy){return ccy==='USD'?'$':'HK$'}
 function formatNativePrice(value,ccy){return nativeCurrency(ccy)+Number(value).toFixed(2)}
 function escapeHTML(value){return String(value).replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
@@ -438,12 +439,21 @@ function getDecisionLog(){
   return readStorage(LEGACY_DECISION_LOG_KEY,[]).map(item=>({...item,outcomes:item.outcomes||{}}));
 }
 function writeDecisionLog(log){localStorage.setItem(DECISION_LOG_KEY,JSON.stringify(log.slice(0,200)))}
-function businessDaysSince(iso){
-  const start=new Date(iso),end=new Date();if(Number.isNaN(start.getTime()))return 0;
+function businessDaysBetween(startIso,endIso){
+  const start=new Date(startIso),end=new Date(endIso);if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime()))return 0;
   let count=0,cursor=new Date(Date.UTC(start.getUTCFullYear(),start.getUTCMonth(),start.getUTCDate()+1));
   const endDay=Date.UTC(end.getUTCFullYear(),end.getUTCMonth(),end.getUTCDate());
   while(cursor.getTime()<=endDay){const day=cursor.getUTCDay();if(day!==0&&day!==6)count++;cursor.setUTCDate(cursor.getUTCDate()+1)}
   return count;
+}
+function recordPriceSnapshot(){
+  const history=readStorage(PRICE_HISTORY_KEY,[]),date=new Date().toISOString();
+  const prices=Object.fromEntries(allPos.map(position=>[position.sym,position.price]));
+  if(latestMarketPrices['SPX.US'])prices['SPX.US']=latestMarketPrices['SPX.US'];
+  const day=date.slice(0,10),existing=history.find(item=>String(item.date).slice(0,10)===day);
+  if(existing){existing.date=date;existing.prices=prices}else history.push({date,prices});
+  history.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  localStorage.setItem(PRICE_HISTORY_KEY,JSON.stringify(history.slice(-180)));
 }
 function directionHit(rating,ret){
   if(['Buy','Overweight'].includes(rating))return ret>0;
@@ -451,16 +461,18 @@ function directionHit(rating,ret){
   return null;
 }
 function updateDecisionOutcomes(){
-  const log=getDecisionLog();let changed=false;
+  const log=getDecisionLog(),history=readStorage(PRICE_HISTORY_KEY,[]);let changed=false;
   for(const item of log){
-    const position=allPos.find(p=>p.sym===item.symbol);if(!position||!item.price||!item.generated_at)continue;
-    item.outcomes=item.outcomes||{};const elapsed=businessDaysSince(item.generated_at);
+    if(!item.price||!item.generated_at)continue;
+    item.outcomes=item.outcomes||{};
     for(const days of [5,20,60]){
-      const key=days+'d';if(elapsed<days||item.outcomes[key])continue;
-      const ret=(position.price-item.price)/item.price*100;
-      const benchmarkNow=item.benchmark_symbol?latestMarketPrices[item.benchmark_symbol]:0;
+      const key=days+'d';if(item.outcomes[key])continue;
+      const snapshot=history.find(candidate=>{const elapsed=businessDaysBetween(item.generated_at,candidate.date);return elapsed>=days&&elapsed<=days+3&&candidate.prices&&candidate.prices[item.symbol]});
+      if(!snapshot)continue;
+      const currentPrice=snapshot.prices[item.symbol],ret=(currentPrice-item.price)/item.price*100;
+      const benchmarkNow=item.benchmark_symbol?snapshot.prices[item.benchmark_symbol]:0;
       const benchmarkRet=item.benchmark_price&&benchmarkNow?(benchmarkNow-item.benchmark_price)/item.benchmark_price*100:null;
-      item.outcomes[key]={return_pct:+ret.toFixed(2),benchmark_return_pct:benchmarkRet===null?null:+benchmarkRet.toFixed(2),excess_return_pct:benchmarkRet===null?null:+(ret-benchmarkRet).toFixed(2),directional_hit:directionHit(item.rating,ret),evaluated_at:new Date().toISOString()};
+      item.outcomes[key]={return_pct:+ret.toFixed(2),benchmark_return_pct:benchmarkRet===null?null:+benchmarkRet.toFixed(2),excess_return_pct:benchmarkRet===null?null:+(ret-benchmarkRet).toFixed(2),directional_hit:directionHit(item.rating,ret),evaluated_at:snapshot.date};
       changed=true;
     }
   }
@@ -605,6 +617,7 @@ function initAll(prices,updated=''){
   latestMarketPrices=prices||{};
   const result=calcAllPos(prices);
   allPos=result.all;gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
+  recordPriceSnapshot();
   updateDecisionOutcomes();
   priceTime=updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
   refreshAllCharts();
