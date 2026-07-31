@@ -9,6 +9,8 @@ CTX.verify_mode = False
 SINA = 'gb_goog,gb_aapl,gb_msft,gb_nvda,gb_tsla,gb_baba,gb_paas,gb_tlt,gb_smh,gb_appx,hk09988,hk00981,hk06030,hk00100,hk02824,gb_$inx,gb_ixic'
 
 RATINGS = {'Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'}
+RATING_SCORE = {'Sell': -2, 'Underweight': -1, 'Hold': 0, 'Overweight': 1, 'Buy': 2}
+EVIDENCE_KEYWORDS = ('价格', '收益', '仓位', '敞口', '集中', '回撤', '成本', '现金', '风险')
 
 def as_float(value, default=0.0):
     try:
@@ -18,6 +20,12 @@ def as_float(value, default=0.0):
 
 def has_chinese(value):
     return any('\u4e00' <= char <= '\u9fff' for char in str(value))
+
+def chinese_list(value, default=None, limit=4):
+    if not isinstance(value, list):
+        return list(default or [])
+    cleaned = [str(item).strip() for item in value if str(item).strip() and has_chinese(item)]
+    return cleaned[:limit] or list(default or [])
 
 def fallback_analysis(body, risk_flags):
     price = max(as_float(body.get('price')), 0.01)
@@ -47,6 +55,8 @@ def fallback_analysis(body, risk_flags):
         'price_target': round(price * 1.12, 2),
         'time_horizon': '1-3个月观察',
         'invalidation_conditions': ['跌破风险价位且投资逻辑没有新增证据支持', '公司或行业基本面出现实质恶化'],
+        'change_reason': '首次生成建议，暂无上一条决策可比较。',
+        'new_evidence': [],
         'source': 'rule_fallback',
     }
 
@@ -57,6 +67,7 @@ def normalize_analysis(raw, body, risk_flags):
     rating = aliases.get(str(raw.get('rating', '')).strip(), rating)
     if rating not in RATINGS:
         rating = fallback['rating']
+    model_rating = rating
     context = body.get('portfolio_context') or {}
     position_weight = as_float(context.get('position_weight'))
     company_weight = as_float(context.get('company_weight'))
@@ -71,15 +82,12 @@ def normalize_analysis(raw, body, risk_flags):
         return value if has_chinese(value) else default
 
     def text_list(key, default):
-        value = raw.get(key)
-        if not isinstance(value, list):
-            return default
-        cleaned = [str(item).strip() for item in value if str(item).strip() and has_chinese(item)]
-        return cleaned[:4] or default
+        return chinese_list(raw.get(key), default)
 
     result = fallback.copy()
     result.update({
         'rating': rating,
+        'model_rating': model_rating,
         'confidence': max(0, min(100, round(as_float(raw.get('confidence'), fallback['confidence'])))),
         'executive_summary': chinese_text('executive_summary', fallback['executive_summary']),
         'bull_case': text_list('bull_case', fallback['bull_case']),
@@ -87,6 +95,8 @@ def normalize_analysis(raw, body, risk_flags):
         'position_sizing': chinese_text('position_sizing', fallback['position_sizing']),
         'time_horizon': chinese_text('time_horizon', fallback['time_horizon']),
         'invalidation_conditions': text_list('invalidation_conditions', fallback['invalidation_conditions']),
+        'change_reason': chinese_text('change_reason', fallback['change_reason']),
+        'new_evidence': text_list('new_evidence', []),
         'source': 'deepseek_structured',
     })
     if concentrated:
@@ -101,6 +111,101 @@ def normalize_analysis(raw, body, risk_flags):
     for field in ('entry_price', 'stop_loss', 'price_target'):
         value = as_float(raw.get(field), fallback[field])
         result[field] = round(value, 2) if value > 0 else fallback[field]
+    return result
+
+def validate_decision(result, body, risk_flags):
+    """用确定性规则审批模型建议；LLM 不能绕过价格、仓位和建议稳定性约束。"""
+    result = dict(result)
+    original_rating = result.get('model_rating', result.get('rating', 'Hold'))
+    final_rating = result.get('rating', 'Hold') if result.get('rating') in RATINGS else 'Hold'
+    violations, adjustments = [], []
+    price = max(as_float(body.get('price')), 0.01)
+    context = body.get('portfolio_context') or {}
+    concentrated = as_float(context.get('position_weight')) >= 0.18 or as_float(context.get('company_weight')) >= 0.20
+    if original_rating != final_rating:
+        violations.append(f'模型原始评级 {original_rating} 已被前置硬风控调整为 {final_rating}')
+        adjustments.append('保留硬风控调整后的评级')
+
+    text = '；'.join((str(result.get('executive_summary', '')), str(result.get('position_sizing', ''))))
+    action_text = text.replace('不建议加仓', '').replace('禁止加仓', '').replace('禁止新增仓位', '').replace('不得加仓', '')
+    positive_phrases = ('建议加仓', '建议增持', '逢低加仓', '小幅增持', '增加仓位')
+    negative_phrases = ('建议减仓', '建议卖出', '降低仓位', '降低敞口', '清仓')
+    if final_rating in {'Buy', 'Overweight'} and any(word in action_text for word in negative_phrases):
+        violations.append('评级为买入/加仓，但文字包含减仓或卖出指令')
+    if final_rating in {'Underweight', 'Sell'} and any(word in action_text for word in positive_phrases):
+        violations.append('评级为减仓/卖出，但文字包含加仓指令')
+    if final_rating == 'Hold' and any(word in action_text for word in positive_phrases + negative_phrases):
+        violations.append('评级为持有，但文字包含明确的加仓或减仓指令')
+    if concentrated and final_rating in {'Buy', 'Overweight'}:
+        violations.append('集中度超过硬上限，禁止新增仓位')
+
+    stop_loss = as_float(result.get('stop_loss'))
+    price_target = as_float(result.get('price_target'))
+    entry_price = as_float(result.get('entry_price'))
+    if stop_loss <= 0 or stop_loss >= price:
+        result['stop_loss'] = round(price * 0.90, 2)
+        violations.append('止损价必须低于当前价格')
+        adjustments.append('已重置止损价')
+    if final_rating in {'Buy', 'Overweight', 'Hold'} and (price_target <= price or price_target <= stop_loss):
+        result['price_target'] = round(price * 1.12, 2)
+        violations.append('做多或持有建议的目标价必须高于当前价和止损价')
+        adjustments.append('已重置目标价')
+    if final_rating in {'Buy', 'Overweight'} and (entry_price <= result['stop_loss'] or entry_price > price * 1.05):
+        result['entry_price'] = round(price * 0.96, 2)
+        violations.append('加仓价格与止损价或当前价格关系不合理')
+        adjustments.append('已重置建议入场价')
+
+    previous = body.get('previous_decision') or {}
+    previous_rating = str(previous.get('rating', ''))
+    changed = previous_rating in RATINGS and previous_rating != final_rating
+    valid_new_evidence = [
+        item for item in chinese_list(result.get('new_evidence'), [])
+        if any(keyword in item for keyword in EVIDENCE_KEYWORDS)
+    ]
+    result['new_evidence'] = valid_new_evidence
+    if changed and concentrated:
+        result['change_reason'] = '组合集中度已达到硬风控阈值，本次方向变化由仓位风险约束触发。'
+    elif changed and not valid_new_evidence:
+        violations.append('建议发生变化，但没有基于已提供数据的新证据')
+        final_rating = 'Hold'
+        adjustments.append('建议已降级为持有，等待可验证的新证据')
+        result['change_reason'] = '本次建议与上次不同，但缺少可验证的新证据，因此暂不执行方向变化。'
+    elif changed:
+        result['change_reason'] = result.get('change_reason') or '建议因新的价格或组合风险证据发生变化。'
+    elif previous_rating in RATINGS:
+        result['change_reason'] = '与上次操作方向一致，当前没有触发方向反转的充分证据。'
+
+    if violations and any('文字包含' in item for item in violations):
+        final_rating = 'Hold'
+        result['executive_summary'] = '本次模型建议存在方向矛盾，未通过一致性校验；在获得一致且可验证的证据前暂时持有。'
+        result['position_sizing'] = '一致性校验未通过，暂不新增或主动减少仓位。'
+        adjustments.append('已消除矛盾指令并降级为持有')
+    if concentrated and final_rating in {'Buy', 'Overweight'}:
+        final_rating = 'Hold'
+        result['position_sizing'] = '集中度超过硬上限，禁止新增仓位；仅维持现有仓位并等待敞口下降。'
+        adjustments.append('集中度硬风控已将建议降级为持有')
+
+    result['rating'] = final_rating
+    stats = body.get('validation_context') or {}
+    sample_size = max(0, int(as_float(stats.get('sample_size'))))
+    hit_rate = max(0.0, min(1.0, as_float(stats.get('directional_hit_rate'))))
+    model_confidence = max(0, min(100, round(as_float(result.get('confidence'), 50))))
+    if sample_size >= 10:
+        calibrated = round(hit_rate * 100)
+        result['confidence'] = min(model_confidence, calibrated)
+        result['confidence_basis'] = f'基于 {sample_size} 个已验证窗口校准，历史方向命中率 {calibrated}%'
+    else:
+        result['confidence'] = min(model_confidence, 70)
+        result['confidence_basis'] = f'历史有效样本仅 {sample_size} 个，置信度暂按模型值封顶 70%'
+
+    result['consistency'] = {
+        'status': 'adjusted' if violations else 'passed',
+        'passed': not violations,
+        'original_rating': original_rating,
+        'final_rating': final_rating,
+        'violations': violations,
+        'adjustments': list(dict.fromkeys(adjustments)),
+    }
     return result
 
 def build_risk_flags(body):
@@ -177,7 +282,8 @@ def analysis():
 除 rating 的固定枚举值和股票代码外，所有分析文字必须使用简体中文回复，不得输出英文操作建议。
 rating 必须是 Buy、Overweight、Hold、Underweight、Sell 之一。
 价格必须使用标的原始报价币种。confidence 为0到100整数。
-JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case(数组), position_sizing, entry_price, stop_loss, price_target, time_horizon, invalidation_conditions(数组)。
+如果建议与上一条不同，必须在 change_reason 中说明变化原因，并在 new_evidence 数组中列出本次输入里真实发生变化的价格、收益率、仓位或风险证据；不得把未提供的新闻或财报当作新证据。
+JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case(数组), position_sizing, entry_price, stop_loss, price_target, time_horizon, invalidation_conditions(数组), change_reason, new_evidence(数组)。
 持仓数据：{json.dumps(body, ensure_ascii=False)}
 硬风控提示：{json.dumps(risk_flags, ensure_ascii=False)}"""
         req = urllib.request.Request('https://api.deepseek.com/v1/chat/completions',
@@ -193,8 +299,10 @@ JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case
         except Exception:
             result = fallback_analysis(body, risk_flags)
             result['source'] = 'rule_fallback_after_error'
+    result = validate_decision(result, body, risk_flags)
     result.update({
         'symbol': str(body.get('symbol', 'UNKNOWN')),
+        'decision_version': 2,
         'risk_flags': risk_flags,
         'data_scope': 'position_price_portfolio_only',
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
