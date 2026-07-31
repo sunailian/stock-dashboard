@@ -36,7 +36,8 @@ def prices():
                 prices[str(int(var.split('hk')[-1])) + '.HK'] = float(parts[3])
         return jsonify({'prices': prices, 'updated': time.strftime('%H:%M:%S')})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()[-300:]}), 500
 
 @app.route('/ai', methods=['POST'])
 def ai():
