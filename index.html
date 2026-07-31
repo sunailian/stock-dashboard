@@ -33,7 +33,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #hero .kpi{font-size:72px;font-weight:200;letter-spacing:-2px;background:linear-gradient(180deg,#fff 0%,var(--orange3) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;text-shadow:0 0 60px var(--glow)}
 #hero .kpi-label{font-size:13px;color:var(--text2);letter-spacing:4px;margin-top:8px}
 #hero .progress-wrap{width:360px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:16px;overflow:hidden;position:relative}
-#hero .progress-bar{height:100%;background:linear-gradient(90deg,var(--orange),var(--orange3));border-radius:2px;width:49.5%;transition:width 1.5s ease}
+#hero .progress-bar{height:100%;background:linear-gradient(90deg,var(--orange),var(--orange3));border-radius:2px;width:36.2%;transition:width 1.5s ease}
 #hero .progress-label{font-size:10px;color:var(--amber);margin-top:6px;letter-spacing:1px}
 #hero .sub-kpis{display:flex;gap:40px;margin-top:20px}
 #hero .sub-kpi{text-align:center}
@@ -245,15 +245,15 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
 
   <!-- CENTER HERO -->
   <div id="hero">
-    <div class="kpi-label">总净资产 · NET ASSETS</div>
-    <div class="kpi" id="hero-kpi">HKD 910,253</div>
+    <div class="kpi-label">总净资产 · NET ASSETS (CNY)</div>
+    <div class="kpi" id="hero-kpi">¥ 797,912</div>
     <div class="progress-wrap"><div class="progress-bar" id="hero-bar"></div></div>
-    <div class="progress-label">年化目标 20% ｜ 当前 <span id="hero-pct">+49.5%</span></div>
+    <div class="progress-label">年化目标 20% ｜ 当前 <span id="hero-pct">+36.2%</span></div>
     <div class="sub-kpis">
-      <div class="sub-kpi"><div class="val" id="sk-cash">76,020</div><div class="lbl">现金 HKD</div></div>
-      <div class="sub-kpi"><div class="val" id="sk-bp">560,478</div><div class="lbl">购买力 HKD</div></div>
-      <div class="sub-kpi"><div class="val" id="sk-usd">$7,638</div><div class="lbl">美元现金</div></div>
-      <div class="sub-kpi"><div class="val" id="sk-hkd">HK$16,129</div><div class="lbl">港币现金</div></div>
+      <div class="sub-kpi"><div class="val" id="sk-cash">168,716</div><div class="lbl">总现金 CNY</div></div>
+      <div class="sub-kpi"><div class="val" id="sk-bp">534,103</div><div class="lbl">购买力 CNY</div></div>
+      <div class="sub-kpi"><div class="val" id="sk-usd">¥ 154,863</div><div class="lbl">美元现金</div></div>
+      <div class="sub-kpi"><div class="val" id="sk-hkd">¥ 13,888</div><div class="lbl">港币现金</div></div>
     </div>
   </div>
 
@@ -286,11 +286,11 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
   <div class="panel" id="rec-panel">
     <div class="panel-title">🔥 个股推荐 · RECOMMENDATIONS</div>
     <div id="rec-strip">
-    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">SMH 📡</div><div class="act">半导体 ETF，现价 $504 低于成本 $538。AI 芯片周期远未见顶，建议逢低加仓 5-10 股。</div><span class="tag tag-bull">短期 · 加仓</span></div>
-    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">2824.HK 🥇</div><div class="act">黄金 ETF，现价 $9.28 低于成本 $15。地缘风险+降息预期利好黄金，建议分批加仓 2000 股。</div><span class="tag tag-bull">中期 · 加仓</span></div>
-    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">TLT 📉</div><div class="act">20 年美债 ETF，+4.2% 稳健。降息周期下长债弹性最大，建议加仓至 100 股。</div><span class="tag tag-bull">长期 · 配置</span></div>
-    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">981.HK 🇨🇳</div><div class="act">中芯国际 +11.3%，国产替代加速。建议持有观察，若回调至 HK$55 加仓。</div><span class="tag tag-hold">中期 · 持有</span></div>
-    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">PAAS ⛏️</div><div class="act">白银矿企 -0.8% 成本附近。贵金属牛市周期，建议加仓至 200 股作为抗通胀配置。</div><span class="tag tag-bull">长期 · 配置</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">SMH 📡</div><div class="act">半导体 ETF，现价 ¥3,670 接近成本 ¥3,635。AI 芯片周期远未见顶，建议逢低加仓 5-10 股。</div><span class="tag tag-bull">短期 · 加仓</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">2824.HK 🥇</div><div class="act">黄金 ETF，现价 ¥8.1 低于成本 ¥12.9。地缘风险+降息预期利好黄金，建议分批加仓 2000 股。</div><span class="tag tag-bull">中期 · 加仓</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">TLT 📉</div><div class="act">20 年美债 ETF，+3.3% 稳健。降息周期下长债弹性最大，建议加仓至 100 股。</div><span class="tag tag-bull">长期 · 配置</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">981.HK 🇨🇳</div><div class="act">中芯国际 +4.7%，国产替代加速。建议持有观察，若回调至 ¥47.5 加仓。</div><span class="tag tag-hold">中期 · 持有</span></div>
+    <div class="ai-card" style="border-color:rgba(0,229,255,.25)"><div class="sym" style="color:var(--cyan)">PAAS ⛏️</div><div class="act">白银矿企 -0.2% 成本附近。贵金属牛市周期，建议加仓至 200 股作为抗通胀配置。</div><span class="tag tag-bull">长期 · 配置</span></div>
     </div>
   </div>
   <!-- AI ANALYSIS -->
@@ -298,11 +298,9 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
     <div class="panel-title">🤖 AI 持仓分析 · AI ANALYSIS（点击卡片刷新建议）</div>
     <div id="ai-strip">
     <div class="ai-card fade-up" style="animation-delay:.8s" onclick="fetchAI('GOOG')"><div class="sym">GOOG</div><div class="act">+59.9% 远超目标。Alphabet 广告+云双引擎强劲，建议持有但逐步减仓锁利。</div><span class="tag tag-hold">持有</span></div>
-    <div class="ai-card fade-up" style="animation-delay:.85s" onclick="fetchAI('AAPL')"><div class="sym">AAPL</div><div class="act">+61.7% 超额完成。Vision Pro 生态+服务收入增长，估值偏高可分批止盈。</div><span class="tag tag-hold">持有</span></div>
     <div class="ai-card fade-up" style="animation-delay:.9s" onclick="fetchAI('MSFT')"><div class="sym">MSFT</div><div class="act">+15.5% 接近目标。Azure+AI 增长确定性高，建议继续持有等待达标。</div><span class="tag tag-bull">持有</span></div>
     <div class="ai-card fade-up" style="animation-delay:.95s" onclick="fetchAI('NVDA')"><div class="sym">NVDA</div><div class="act">+1.2% 成本区。AI芯片龙头地位稳固，B系列量产在即，逢低加仓。</div><span class="tag tag-bull">加仓</span></div>
     <div class="ai-card fade-up" style="animation-delay:1s" onclick="fetchAI('TSLA')"><div class="sym">TSLA</div><div class="act">-25.1% 触发止损。盈利能力承压，建议止损或大幅减仓观察。</div><span class="tag tag-bear">止损</span></div>
-    <div class="ai-card fade-up" style="animation-delay:1.05s" onclick="fetchAI('APPX')"><div class="sym">APPX</div><div class="act">-76.5% 杠杆ETF重创。2倍杠杆不适合长期持有，建议立即清仓。</div><span class="tag tag-bear">止损</span></div>
     <div class="ai-card fade-up" style="animation-delay:1.1s" onclick="fetchAI('BABA')"><div class="sym">BABA.US</div><div class="act">成本已为负。中概回暖+电商复苏，持有观察跨境政策变化。</div><span class="tag tag-hold">持有</span></div>
     <div class="ai-card fade-up" style="animation-delay:1.15s" onclick="fetchAI('TLT')"><div class="sym">TLT</div><div class="act">+4.2% 稳健。降息周期下长债弹性最大，建议作为防御配置持有。</div><span class="tag tag-hold">持有</span></div>
     <div class="ai-card fade-up" style="animation-delay:1.2s" onclick="fetchAI('9988.HK')"><div class="sym">9988.HK</div><div class="act">阿里港股-3.4%回调中。估值低位+回购支撑，等待催化剂。</div><span class="tag tag-hold">持有</span></div>
@@ -314,24 +312,23 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
 </div>
 
 <script>
-// ── Data (cost basis fixed, prices from Sina) ──
+// ── Data (cost basis from LongPort 2026-07-31, prices from Sina) ──
+const FX={USD:6.7546,HKD:0.8609};  // 人民币汇率（新浪 2026-07-31）
 const portfolio={
-  netAssets:910253, cash:76020, buyPower:560478, cashUSD:7638, cashHKD:16129,
-  totalReturn:49.5, annualTarget:20,
+  netAssets:926860, cash:195976, buyPower:620401, cashUSD:22928, cashHKD:16132,
+  totalReturn:36.2, annualTarget:20,
   usPositions:[
     {sym:'GOOG',name:'Alphabet',qty:56,cost:209.93,ccy:'USD',sector:'科技'},
-    {sym:'AAPL',name:'Apple',qty:29,cost:209.15,ccy:'USD',sector:'科技'},
     {sym:'MSFT',name:'Microsoft',qty:20,cost:338.07,ccy:'USD',sector:'科技'},
     {sym:'NVDA',name:'NVIDIA',qty:50,cost:187.74,ccy:'USD',sector:'半导体'},
-    {sym:'TSLA',name:'Tesla',qty:30,cost:398.03,ccy:'USD',sector:'汽车'},
+    {sym:'TSLA',name:'Tesla',qty:10,cost:579.38,ccy:'USD',sector:'汽车'},
     {sym:'BABA',name:'Alibaba',qty:110,cost:-188.67,ccy:'USD',sector:'电商'},
     {sym:'PAAS',name:'Pan American Silver',qty:120,cost:42.89,ccy:'USD',sector:'矿业'},
     {sym:'TLT',name:'iShares 20+Yr Treasury',qty:50,cost:79.54,ccy:'USD',sector:'债券'},
-    {sym:'SMH',name:'VanEck Semiconductor',qty:10,cost:538.14,ccy:'USD',sector:'半导体'},
-    {sym:'APPX',name:'2X Long APP Daily',qty:16,cost:97.97,ccy:'USD',sector:'杠杆ETF'}
+    {sym:'SMH',name:'VanEck Semiconductor',qty:10,cost:538.14,ccy:'USD',sector:'半导体'}
   ],
   hkPositions:[
-    {sym:'9988.HK',name:'阿里巴巴-W',qty:600,cost:117.63,ccy:'HKD',sector:'电商'},
+    {sym:'9988.HK',name:'阿里巴巴-W',qty:600,cost:117.62,ccy:'HKD',sector:'电商'},
     {sym:'981.HK',name:'中芯国际',qty:500,cost:60.40,ccy:'HKD',sector:'半导体'},
     {sym:'6030.HK',name:'中信证券',qty:1000,cost:28.78,ccy:'HKD',sector:'金融'},
     {sym:'100.HK',name:'MINIMAX-W',qty:40,cost:756.00,ccy:'HKD',sector:'AI'},
@@ -341,17 +338,19 @@ const portfolio={
 
 const API_BASE='https://stock-dashboard-ydmplntsru.cn-hangzhou.fcapp.run';
 let allPos=[],gainers=[],priceTime='';
-const defaultPrices={GOOG:345.44,AAPL:302.16,MSFT:456.65,NVDA:194.96,TSLA:302.00,BABA:120.41,PAAS:42.14,TLT:82.09,SMH:536.97,APPX:20.76,'9988.HK':117.00,'981.HK':63.25,'6030.HK':27.32,'100.HK':230.60,'2824.HK':9.43};
+const defaultPrices={GOOG:345.44,MSFT:456.65,NVDA:194.96,TSLA:302.00,BABA:120.41,PAAS:42.14,TLT:82.09,SMH:536.97,'9988.HK':117.00,'981.HK':63.25,'6030.HK':27.32,'100.HK':230.60,'2824.HK':9.43};
 
 function calcAllPos(prices){
   const us=portfolio.usPositions.map(p=>{
     // 接口 key 是 GOOG.US，兼容裸 GOOG 和带 .US 两种
     const px=prices[p.sym]||prices[p.sym+'.US']||defaultPrices[p.sym]||0;
-    return {...p,price:px,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/Math.abs(p.cost)*100:0)};
+    const fx=FX[p.ccy]||FX.HKD;
+    return {...p,price:px,fx,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/Math.abs(p.cost)*100:0),pnlCny:(px-p.cost)*p.qty*fx,costCny:Math.abs(p.cost)*p.qty*fx};
   });
   const hk=portfolio.hkPositions.map(p=>{
     const px=prices[p.sym]||prices[p.sym+'.US']||defaultPrices[p.sym]||0;
-    return {...p,price:px,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/p.cost*100:0)};
+    const fx=FX[p.ccy]||FX.HKD;
+    return {...p,price:px,fx,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/p.cost*100:0),pnlCny:(px-p.cost)*p.qty*fx,costCny:Math.abs(p.cost)*p.qty*fx};
   });
   return {all:[...us,...hk],us,hk};
 }
@@ -359,14 +358,14 @@ function calcAllPos(prices){
 function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
 function renderHealthReport(positions){
   if(!positions.length)return;
-  const invested=positions.reduce((sum,p)=>sum+Math.abs(p.cost)*p.qty*(p.ccy==='USD'?7.8:1),0);
+  const invested=positions.reduce((sum,p)=>sum+p.costCny,0);
   const positive=positions.filter(p=>p.ret>=0).length;
   const positiveRate=positive/positions.length;
-  const losingWeight=positions.filter(p=>p.ret<0).reduce((sum,p)=>sum+Math.abs(p.cost)*p.qty*(p.ccy==='USD'?7.8:1),0)/(invested||1);
-  const sectors={};positions.forEach(p=>{const weight=Math.abs(p.cost)*p.qty*(p.ccy==='USD'?7.8:1);sectors[p.sector]=(sectors[p.sector]||0)+weight});
+  const losingWeight=positions.filter(p=>p.ret<0).reduce((sum,p)=>sum+p.costCny,0)/(invested||1);
+  const sectors={};positions.forEach(p=>{const weight=p.costCny;sectors[p.sector]=(sectors[p.sector]||0)+weight});
   const sectorCount=Object.keys(sectors).length;
-  const largest=[...positions].sort((a,b)=>Math.abs(b.cost)*b.qty*(b.ccy==='USD'?7.8:1)-Math.abs(a.cost)*a.qty*(a.ccy==='USD'?7.8:1))[0];
-  const largestWeight=Math.abs(largest.cost)*largest.qty*(largest.ccy==='USD'?7.8:1)/(invested||1);
+  const largest=[...positions].sort((a,b)=>b.costCny-a.costCny)[0];
+  const largestWeight=largest.costCny/(invested||1);
   const leverage=positions.filter(p=>p.sector==='杠杆ETF').length;
   const totalReturn=portfolio.totalReturn;
   const performanceScore=clamp(Math.round(10+totalReturn/portfolio.annualTarget*10+positiveRate*5),0,25);
@@ -400,7 +399,7 @@ function refreshAllCharts(){
   const d=allPos;
   renderHealthReport(d);
   // Hero
-  document.getElementById('hero-pct').textContent=((allPos.reduce((s,p)=>s+p.pnl,0)/(allPos.reduce((s,p)=>s+Math.abs(p.cost)*p.qty,0)||1))*100).toFixed(1)+'%';
+  document.getElementById('hero-pct').textContent=((allPos.reduce((s,p)=>s+p.pnlCny,0)/(allPos.reduce((s,p)=>s+p.costCny,0)||1))*100).toFixed(1)+'%';
   // Rank
   chartRank.setOption({yAxis:{data:gainers.map(p=>p.sym).reverse()},series:[{data:gainers.map(p=>({value:p.ret,itemStyle:{color:p.ret>=20?'#00e676':p.ret>=0?'#ff6a00':'#ff3d3d'}})).reverse()}]});
   // Perf spectrum
@@ -412,14 +411,14 @@ function refreshAllCharts(){
   const usData=d.filter(x=>!x.sym.includes('.HK'));
   for(const p of usData){
     const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
-    usList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${p.cost.toFixed(2)}</span><span class="price">${p.price.toFixed(2)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+    usList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">¥${(p.cost*p.fx).toFixed(0)}</span><span class="price">¥${(p.price*p.fx).toFixed(0)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
   }
   // HK list
   const hkList=document.getElementById('hk-list');hkList.innerHTML='';
   const hkData=d.filter(x=>x.sym.includes('.HK'));
   for(const p of hkData){
     const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
-    hkList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${p.cost.toFixed(2)}</span><span class="price">${p.price.toFixed(2)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+    hkList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">¥${(p.cost*p.fx).toFixed(0)}</span><span class="price">¥${(p.price*p.fx).toFixed(0)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
   }
 }
 
@@ -434,30 +433,31 @@ function getStockAdvice(p){
 }
 function openStockDetail(symbol){
   const p=allPos.find(x=>x.sym===symbol);if(!p)return;
-  const ret=p.ret, currency=p.ccy==='USD'?'$':'HK$';
-  const costLabel=p.cost>0?currency+p.cost.toFixed(2):'负成本';
-  const pnl=(p.pnl*(p.ccy==='USD'?7.8:1));
-  const pnlLabel=(pnl>=0?'+':'-')+currency+Math.abs(pnl).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const ret=p.ret;
+  const costCny=Math.abs(p.cost)*p.fx, priceCny=p.price*p.fx;
+  const costLabel=p.cost>0?'¥'+costCny.toFixed(0):'负成本';
+  const pnlCny=p.pnlCny;
+  const pnlLabel=(pnlCny>=0?'+':'-')+'¥'+Math.abs(pnlCny).toLocaleString(undefined,{maximumFractionDigits:0});
   const advice=getStockAdvice(p);
   const buyBase=p.price*(ret<=-20?.92:.96),sellBase=p.price*(ret>=30?1.06:1.12);
   document.getElementById('stock-detail-title').firstChild.textContent=p.sym+' ';
   document.getElementById('stock-detail-name').textContent=p.name;
   document.getElementById('detail-cost').textContent=costLabel;
-  document.getElementById('detail-price').textContent=currency+p.price.toFixed(2);
+  document.getElementById('detail-price').textContent='¥'+priceCny.toFixed(0);
   document.getElementById('detail-pnl').textContent=pnlLabel;
-  document.getElementById('detail-pnl').className=' '+(pnl>=0?'up':'dn');
+  document.getElementById('detail-pnl').className=' '+(pnlCny>=0?'up':'dn');
   document.getElementById('detail-ret').textContent=(ret>=0?'+':'')+ret.toFixed(1)+'%';
   document.getElementById('detail-ret').className=' '+(ret>=0?'up':'dn');
   const actionEl=document.getElementById('detail-action');actionEl.textContent=advice.action;actionEl.className='stock-action '+advice.tone;
   document.getElementById('detail-analysis').textContent=advice.analysis;
-  document.getElementById('detail-buy-zone').textContent=currency+buyBase.toFixed(2)+' 附近';
-  document.getElementById('detail-sell-zone').textContent=currency+sellBase.toFixed(2)+' 附近';
+  document.getElementById('detail-buy-zone').textContent='¥'+(buyBase*p.fx).toFixed(0)+' 附近';
+  document.getElementById('detail-sell-zone').textContent='¥'+(sellBase*p.fx).toFixed(0)+' 附近';
   document.getElementById('stock-detail-modal').classList.add('open');document.body.style.overflow='hidden';
   const validCost=p.cost>0?p.cost:p.price*.78;
   const trend=Array.from({length:30},(_,i)=>{const t=i/29;const noise=Math.sin(i*1.37+p.sym.length)*Math.max(p.price*.018,Math.abs(p.price-validCost)*.025);return +(validCost+(p.price-validCost)*t+noise).toFixed(2)});
   if(detailChart)detailChart.dispose();
   detailChart=echarts.init(document.getElementById('stock-detail-chart'));
-  detailChart.setOption({animationDuration:500,tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.96)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11},valueFormatter:v=>currency+Number(v).toFixed(2)},grid:{left:42,right:18,top:18,bottom:24},xAxis:{type:'category',data:trend.map((_,i)=>i===29?'现在':`-${29-i}日`),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9,interval:6}},yAxis:{type:'value',scale:true,axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>currency+Number(v).toFixed(0)},splitLine:{lineStyle:{color:'rgba(255,255,255,.04)'}}},series:[{name:'模型走势',type:'line',data:trend,smooth:true,symbol:'none',lineStyle:{color:'#ff6a00',width:2},areaStyle:{color:'rgba(255,80,0,.10)'}},{name:'买入参考',type:'line',data:trend.map(()=>validCost),symbol:'none',lineStyle:{color:'rgba(0,229,255,.55)',type:'dashed',width:1}},{name:'现价',type:'line',data:trend.map(()=>p.price),symbol:'none',lineStyle:{color:'rgba(0,230,118,.65)',type:'dashed',width:1}}]});
+  detailChart.setOption({animationDuration:500,tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.96)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11},valueFormatter:v=>'¥'+Number(v*p.fx).toFixed(0)},grid:{left:42,right:18,top:18,bottom:24},xAxis:{type:'category',data:trend.map((_,i)=>i===29?'现在':`-${29-i}日`),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9,interval:6}},yAxis:{type:'value',scale:true,axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>'¥'+Number(v*p.fx).toFixed(0)},splitLine:{lineStyle:{color:'rgba(255,255,255,.04)'}}},series:[{name:'模型走势',type:'line',data:trend,smooth:true,symbol:'none',lineStyle:{color:'#ff6a00',width:2},areaStyle:{color:'rgba(255,80,0,.10)'}},{name:'买入参考',type:'line',data:trend.map(()=>validCost),symbol:'none',lineStyle:{color:'rgba(0,229,255,.55)',type:'dashed',width:1}},{name:'现价',type:'line',data:trend.map(()=>p.price),symbol:'none',lineStyle:{color:'rgba(0,230,118,.65)',type:'dashed',width:1}}]});
 }
 function closeStockDetail(){document.getElementById('stock-detail-modal').classList.remove('open');document.body.style.overflow='';}
 document.addEventListener('click',e=>{const row=e.target.closest('.srow');if(row)openStockDetail(row.dataset.symbol);if(e.target.id==='stock-detail-close'||e.target.id==='stock-detail-modal')closeStockDetail()});
@@ -476,10 +476,10 @@ function initAll(prices){
   refreshAllCharts();
   document.getElementById('live-label').textContent='LIVE '+priceTime;
   // Update hero numbers
-  const totalPnl=allPos.reduce((s,p)=>s+p.pnl,0);
-  const totalCost=allPos.reduce((s,p)=>s+Math.abs(p.cost)*p.qty,0)||1;
+  const totalPnl=allPos.reduce((s,p)=>s+p.pnlCny,0);
+  const totalCost=allPos.reduce((s,p)=>s+p.costCny,0)||1;
   document.getElementById('hero-pct').textContent=(totalPnl/totalCost*100).toFixed(1)+'%';
-  document.getElementById('hero-kpi').textContent='HKD '+(portfolio.netAssets+Math.round(totalPnl/7.8)).toLocaleString();
+  document.getElementById('hero-kpi').textContent='¥ '+Math.round(portfolio.netAssets*FX.HKD).toLocaleString();
   document.getElementById('hero-bar').style.width=Math.min(Math.abs(totalPnl/totalCost*100),100)+'%';
 }
 
@@ -537,7 +537,7 @@ const chartTrend=echarts.init(document.getElementById('chart-trend'));
 chartTrend.setOption({tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11}},grid:{left:50,right:20,top:20,bottom:20},xAxis:{type:'category',data:trendData.map((_,i)=>`-${180-i}d`),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9},boundaryGap:false},yAxis:{type:'value',axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>(v/1000).toFixed(0)+'k'},splitLine:{lineStyle:{color:'rgba(255,255,255,.03)'}}},series:[{type:'line',data:trendData,smooth:true,symbol:'none',name:'组合净值',lineStyle:{color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#ff5000'},{offset:1,color:'#ff8a00'}]),width:2},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(255,80,0,.15)'},{offset:1,color:'rgba(255,80,0,0)'}])}},{type:'line',data:bScaled,smooth:true,symbol:'none',name:'基准(S&P)',lineStyle:{color:'rgba(0,229,255,.4)',width:1,type:'dashed'}}]});
 
 // ── Sector ──
-const sectors={};for(const p of allPos){const s=p.sector;sectors[s]=(sectors[s]||0)+Math.abs(p.cost)*p.qty*(p.ccy==='USD'?7.8:1)}
+const sectors={};for(const p of allPos){const s=p.sector;sectors[s]=(sectors[s]||0)+p.costCny}
 const chartSector=echarts.init(document.getElementById('chart-sector'));
 chartSector.setOption({tooltip:{trigger:'item',backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11}},series:[{type:'pie',radius:['55%','80%'],center:['50%','55%'],data:Object.entries(sectors).map(([n,v])=>({name:n,value:v})),label:{color:'#8a7e72',fontSize:10},itemStyle:{borderColor:'rgba(10,8,6,.8)',borderWidth:2},color:['#ff5000','#ff6a00','#ff8a00','#ffc107','#00e5ff','#ff3d3d','#00e676']}]});
 
@@ -546,7 +546,7 @@ const chartRank=echarts.init(document.getElementById('chart-rank'));
 chartRank.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5'}},grid:{left:100,right:30,top:10,bottom:10},xAxis:{type:'value',axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>v+'%'},splitLine:{lineStyle:{color:'rgba(255,255,255,.03)'}}},yAxis:{type:'category',data:gainers.map(p=>p.sym).reverse(),axisLabel:{color:'#c8beb5',fontSize:10},axisLine:{show:false},axisTick:{show:false}},series:[{type:'bar',data:gainers.map(p=>({value:p.ret,itemStyle:{color:p.ret>=20?'#00e676':p.ret>=0?'#ff6a00':'#ff3d3d'}})).reverse(),barWidth:14}]});
 
 // ── Allocation ──
-const allocData=allPos.map(p=>({name:p.sym,value:Math.abs(p.cost)*p.qty*(p.ccy==='USD'?7.8:1)}));allocData.push({name:'现金',value:portfolio.cash});allocData.push({name:'借款',value:0});
+const allocData=allPos.map(p=>({name:p.sym,value:p.costCny}));allocData.push({name:'现金',value:portfolio.cash*FX.HKD});allocData.push({name:'借款',value:0});
 const chartAlloc=echarts.init(document.getElementById('chart-alloc'));
 chartAlloc.setOption({tooltip:{trigger:'item',backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5'}},series:[{type:'pie',radius:['40%','70%'],center:['50%','55%'],data:allocData,label:{color:'#8a7e72',fontSize:9,formatter:p=>p.name},color:['#ff5000','#ff6a00','#ff8a00','#ffc107','#00e5ff','#ff3d3d','#00e676','#ff7043','#ffab40','#ffd54f','#80cbc4','#ef5350','#66bb6a','#ab47bc','#42a5f5','rgba(255,255,255,.08)']}]});
 
@@ -579,7 +579,7 @@ async function fetchAI(symbol){
 }
 // Auto-load: re-fetch all AI cards on page load (sequential, 800ms apart)
 async function autoLoadAI(){
-  const symbols=['GOOG','AAPL','MSFT','NVDA','TSLA','BABA','TLT','APPX','9988.HK','981.HK','100.HK','2824.HK'];
+  const symbols=['GOOG','MSFT','NVDA','TSLA','BABA','TLT','9988.HK','981.HK','100.HK','2824.HK','PAAS','SMH'];
   for(const sym of symbols){
     await fetchAI(sym);
     await new Promise(r=>setTimeout(r,800));
@@ -597,7 +597,7 @@ window.addEventListener('resize',()=>{scale();[chartTrend,chartSector,chartRank,
 
 // ── Number animations on load ──
 setTimeout(()=>{
-  animateNum(document.getElementById('hero-kpi'),910253,'HKD ','');
-  document.getElementById('hero-bar').style.width='49.5%';
+  animateNum(document.getElementById('hero-kpi'),797912,'¥ ','');
+  document.getElementById('hero-bar').style.width='36.2%';
 },1200);
 </script></body></html>
