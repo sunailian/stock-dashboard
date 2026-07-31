@@ -83,6 +83,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .srow .price{width:64px;text-align:right;flex-shrink:0}
 .srow .pnl{width:50px;text-align:right;flex-shrink:0}
 .srow .up{color:var(--green)}.srow .dn{color:var(--red)}
+.srow{cursor:pointer;transition:background .2s ease}.srow:hover,.srow:focus-visible{background:rgba(255,80,0,.10);outline:none}.srow::after{content:'›';color:var(--text2);margin-left:5px}
 /* Bottom panels */
 #rec-panel{position:absolute;bottom:106px;left:12px;right:12px;z-index:5;height:110px}
 #rec-panel .panel-title{padding:4px 18px 2px;font-size:10px}
@@ -110,6 +111,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .health-actions{border-left:1px solid rgba(255,255,255,.08);padding-left:18px}.health-actions .action-label{font-size:10px;color:var(--amber);letter-spacing:1px;margin-bottom:6px}.health-actions p{font-size:10px;line-height:1.7;color:var(--text)}
 .health-dims{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:12px 18px 0}.health-dim{background:rgba(255,255,255,.025);border:1px solid rgba(255,80,0,.10);padding:9px 10px;border-radius:2px}.health-dim-top{display:flex;justify-content:space-between;gap:6px;font-size:10px}.health-dim-top b{color:var(--text)}.health-dim-top span{color:var(--orange3);font-family:Mono,monospace}.health-dim small{display:block;color:var(--text2);font-size:9px;line-height:1.45;margin-top:5px;min-height:27px}.health-bar{height:3px;background:rgba(255,255,255,.07);margin-top:8px;border-radius:2px;overflow:hidden}.health-bar i{display:block;height:100%;width:var(--fill);background:linear-gradient(90deg,var(--orange),var(--orange3));border-radius:2px}
 .health-note{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 18px 0}.health-note-card{font-size:10px;line-height:1.6;padding:8px 10px;background:rgba(255,255,255,.02);border-left:2px solid var(--orange)}.health-note-card strong{display:block;color:var(--orange3);font-size:9px;letter-spacing:1px;margin-bottom:2px}.health-note-card p{color:var(--text)}
+/* Single-position detail view */
+#stock-detail-modal{position:fixed;inset:0;z-index:500;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(5,4,3,.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#stock-detail-modal.open{display:flex}.stock-detail-card{width:min(980px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:auto;background:linear-gradient(145deg,rgba(25,18,13,.98),rgba(10,8,6,.98));border:1px solid rgba(255,80,0,.35);box-shadow:0 20px 70px rgba(0,0,0,.55);border-radius:3px;padding:18px}.stock-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid rgba(255,255,255,.07);padding-bottom:12px}.stock-detail-kicker{font-size:9px;color:var(--text2);letter-spacing:2px}.stock-detail-title{font-size:24px;color:var(--orange3);font-weight:700;margin-top:3px}.stock-detail-name{font-size:11px;color:var(--text2);margin-left:8px;font-weight:400}.stock-detail-close{border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text2);font-size:16px;line-height:1;width:30px;height:30px;cursor:pointer;border-radius:2px}.stock-detail-close:hover{color:#fff;background:rgba(255,80,0,.15)}
+.stock-detail-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}.stock-metric{padding:10px 12px;border:1px solid rgba(255,80,0,.12);background:rgba(255,255,255,.025)}.stock-metric label{display:block;font-size:9px;color:var(--text2);letter-spacing:1px}.stock-metric strong{display:block;font-size:20px;color:var(--text);font-family:Mono,monospace;margin-top:5px}.stock-metric strong.up{color:var(--green)}.stock-metric strong.dn{color:var(--red)}
+.stock-detail-body{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr);gap:14px;margin-top:14px}.stock-detail-chart{height:260px;border:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.12)}.stock-detail-chart-title{font-size:10px;color:var(--text2);letter-spacing:1px;padding:10px 12px 0}.stock-detail-chart-canvas{height:calc(100% - 28px)}
+.stock-advice{border:1px solid rgba(255,193,7,.22);background:rgba(255,193,7,.055);padding:14px}.stock-advice-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.stock-advice-heading strong{font-size:12px;color:var(--amber);letter-spacing:1px}.stock-action{font-size:11px;padding:3px 10px;border-radius:2px;font-weight:700}.stock-action.hold{color:var(--amber);background:rgba(255,193,7,.14)}.stock-action.add{color:var(--green);background:rgba(0,230,118,.14)}.stock-action.reduce{color:var(--red);background:rgba(255,61,61,.14)}.stock-advice p{font-size:11px;color:var(--text);line-height:1.7;margin-top:10px}.stock-levels{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.stock-level{padding:9px;background:rgba(0,0,0,.16);border:1px solid rgba(255,255,255,.06)}.stock-level label{display:block;color:var(--text2);font-size:9px}.stock-level b{display:block;color:var(--text);font-size:14px;font-family:Mono,monospace;margin-top:4px}.stock-detail-footer{font-size:9px;color:var(--text2);line-height:1.5;margin-top:12px}
 @media(max-width:768px){#rec-panel{position:static!important;margin:0!important;height:auto!important;overflow:visible!important}
 #rec-strip{flex-wrap:wrap;overflow:visible}
 #ai-panel{position:static!important;margin:0!important;height:auto!important;overflow:visible!important}
@@ -154,7 +161,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 @media(min-width:769px){
   html{min-height:100%;overflow-x:hidden;overflow-y:auto}
   body{min-width:0;min-height:100%;height:auto;overflow-x:hidden;overflow-y:auto}
-  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 210px 246px auto auto auto;grid-template-areas:'header header header' 'sector hero alloc' 'rank trend perf' 'us . hk' 'health health health' 'rec rec rec' 'ai ai ai';gap:12px;padding:0 12px 12px;overflow:visible}
+  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 210px 246px auto auto;grid-template-areas:'header header header' 'sector hero alloc' 'rank trend perf' 'us . hk' 'rec rec rec' 'ai ai ai';gap:12px;padding:0 12px 12px;overflow:visible}
   #header{position:relative;grid-area:header;inset:auto;width:auto;height:auto;padding:0 12px}
   #fs-btn{top:22px;right:12px}
   #hero{position:relative;grid-area:hero;inset:auto;width:auto;height:auto;min-width:0}
@@ -167,7 +174,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #hk-panel{position:relative;grid-area:hk;inset:auto;width:auto;height:auto;min-height:246px;overflow-y:auto}
   #rec-panel{position:relative;grid-area:rec;inset:auto;width:auto;height:auto;min-height:110px}
   #ai-panel{position:relative;grid-area:ai;inset:auto;width:auto;height:auto;min-height:90px}
-  #health-panel{position:relative;grid-area:health;inset:auto;width:auto;height:auto;min-height:300px}
+  #health-panel{display:none!important}
   #rec-strip,#ai-strip{overflow:visible}
   #particles{inset:0;width:100%;height:100%;overflow:hidden}
 }
@@ -185,7 +192,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #ai-panel,#rec-panel{min-height:0}
 }
 @media(max-width:900px) and (min-width:769px){
-  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px 246px auto auto auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'rank perf' 'us hk' 'health health' 'rec rec' 'ai ai'}
+  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px 246px auto auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'rank perf' 'us hk' 'rec rec' 'ai ai'}
 }
 @media(max-width:1100px) and (min-width:769px){
   .health-head{grid-template-columns:130px minmax(180px,1fr) minmax(220px,1fr);gap:12px}.health-dims{gap:5px;padding-left:12px;padding-right:12px}.health-note{padding-left:12px;padding-right:12px}
@@ -193,6 +200,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 @media(max-width:768px){
   #health-panel{position:static!important;width:100%!important;height:auto!important;min-height:0!important;margin:0!important}
   .health-head{grid-template-columns:1fr;gap:12px;padding:12px}.health-score{margin:auto}.health-actions{border-left:0;border-top:1px solid rgba(255,255,255,.08);padding:10px 0 0}.health-dims{grid-template-columns:1fr 1fr;padding:10px 12px 0}.health-note{grid-template-columns:1fr;padding:10px 12px 0}
+  #stock-detail-modal{padding:0}.stock-detail-card{width:100%;height:100%;max-height:none;border-radius:0;padding:14px}.stock-detail-body{grid-template-columns:1fr}.stock-detail-chart{height:220px}.stock-detail-metrics{grid-template-columns:1fr 1fr}.stock-detail-title{font-size:20px}
 }
 </style></head>
 <body>
@@ -216,6 +224,13 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
 </script>
 <div id="glow-cursor"></div>
 <div id="loading"><div class="spinner"></div></div>
+<div id="stock-detail-modal" role="dialog" aria-modal="true" aria-labelledby="stock-detail-title">
+  <div class="stock-detail-card">
+    <div class="stock-detail-header"><div><div class="stock-detail-kicker">POSITION ANALYSIS · 个股持仓分析</div><div class="stock-detail-title" id="stock-detail-title">-- <span class="stock-detail-name" id="stock-detail-name">--</span></div></div><button class="stock-detail-close" id="stock-detail-close" aria-label="关闭">×</button></div>
+    <div class="stock-detail-metrics"><div class="stock-metric"><label>买入股价 · COST</label><strong id="detail-cost">--</strong></div><div class="stock-metric"><label>此刻股价 · NOW</label><strong id="detail-price">--</strong></div><div class="stock-metric"><label>持仓盈利 · P&L</label><strong id="detail-pnl">--</strong></div><div class="stock-metric"><label>收益率 · RETURN</label><strong id="detail-ret">--</strong></div></div>
+    <div class="stock-detail-body"><div class="stock-detail-chart"><div class="stock-detail-chart-title">30日模型走势 · 买入价 / 现价 / 建议位</div><div class="stock-detail-chart-canvas" id="stock-detail-chart"></div></div><div class="stock-advice"><div class="stock-advice-heading"><strong>操作建议 · ACTION PLAN</strong><span class="stock-action hold" id="detail-action">持有</span></div><p id="detail-analysis">正在生成该标的的操作分析。</p><div class="stock-levels"><div class="stock-level"><label>建议买入区间</label><b id="detail-buy-zone">--</b></div><div class="stock-level"><label>建议卖出 / 止盈区间</label><b id="detail-sell-zone">--</b></div></div><div class="stock-detail-footer">规则参考：结合收益率、杠杆属性和当前价格相对成本的位置生成；不构成投资承诺，请结合你的持有周期和风险承受能力执行。</div></div></div>
+  </div>
+</div>
 <div id="stage">
   <div id="particles"></div>
   <div id="header">
@@ -396,16 +411,56 @@ function refreshAllCharts(){
   const usData=d.filter(x=>!x.sym.includes('.HK'));
   for(const p of usData){
     const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
-    usList.innerHTML+=`<div class="srow"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${p.cost.toFixed(2)}</span><span class="price">${p.price.toFixed(2)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+    usList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${p.cost.toFixed(2)}</span><span class="price">${p.price.toFixed(2)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
   }
   // HK list
   const hkList=document.getElementById('hk-list');hkList.innerHTML='';
   const hkData=d.filter(x=>x.sym.includes('.HK'));
   for(const p of hkData){
     const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
-    hkList.innerHTML+=`<div class="srow"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${p.cost.toFixed(2)}</span><span class="price">${p.price.toFixed(2)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+    hkList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${p.cost.toFixed(2)}</span><span class="price">${p.price.toFixed(2)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
   }
 }
+
+let detailChart=null;
+function getStockAdvice(p){
+  const ret=p.ret;
+  const reduce=p.sector==='杠杆ETF'||ret<=-30||ret>=50;
+  const add=!reduce&&ret<=-10;
+  if(reduce)return {action:'减仓',tone:'reduce',analysis:p.sector==='杠杆ETF'?`该仓位属于杠杆 ETF，波动会被放大。当前收益率 ${ret.toFixed(1)}%，建议先降低仓位，把单一高波动标的控制在组合可承受范围内；若反弹至卖出区间，分批兑现。`:`当前收益率 ${ret.toFixed(1)}%，已经明显偏离成本区间。建议停止摊平，按计划分批减仓，并用止损/止盈纪律替代情绪决策。`};
+  if(add)return {action:'加仓',tone:'add',analysis:`当前收益率 ${ret.toFixed(1)}%，价格回到成本下方。只有在基本面和原有逻辑未改变时才建议分批加仓，先用小仓位验证，不要一次性补满。`};
+  return {action:'持有',tone:'hold',analysis:`当前收益率 ${ret.toFixed(1)}%，价格仍处于可观察区间。建议继续持有，等待趋势确认；若跌破买入区间下沿或达到止盈区间，再重新评估。`};
+}
+function openStockDetail(symbol){
+  const p=allPos.find(x=>x.sym===symbol);if(!p)return;
+  const ret=p.ret, currency=p.ccy==='USD'?'$':'HK$';
+  const costLabel=p.cost>0?currency+p.cost.toFixed(2):'负成本';
+  const pnl=(p.pnl*(p.ccy==='USD'?7.8:1));
+  const pnlLabel=(pnl>=0?'+':'-')+currency+Math.abs(pnl).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const advice=getStockAdvice(p);
+  const buyBase=p.price*(ret<=-20?.92:.96),sellBase=p.price*(ret>=30?1.06:1.12);
+  document.getElementById('stock-detail-title').firstChild.textContent=p.sym+' ';
+  document.getElementById('stock-detail-name').textContent=p.name;
+  document.getElementById('detail-cost').textContent=costLabel;
+  document.getElementById('detail-price').textContent=currency+p.price.toFixed(2);
+  document.getElementById('detail-pnl').textContent=pnlLabel;
+  document.getElementById('detail-pnl').className=' '+(pnl>=0?'up':'dn');
+  document.getElementById('detail-ret').textContent=(ret>=0?'+':'')+ret.toFixed(1)+'%';
+  document.getElementById('detail-ret').className=' '+(ret>=0?'up':'dn');
+  const actionEl=document.getElementById('detail-action');actionEl.textContent=advice.action;actionEl.className='stock-action '+advice.tone;
+  document.getElementById('detail-analysis').textContent=advice.analysis;
+  document.getElementById('detail-buy-zone').textContent=currency+buyBase.toFixed(2)+' 附近';
+  document.getElementById('detail-sell-zone').textContent=currency+sellBase.toFixed(2)+' 附近';
+  document.getElementById('stock-detail-modal').classList.add('open');document.body.style.overflow='hidden';
+  const validCost=p.cost>0?p.cost:p.price*.78;
+  const trend=Array.from({length:30},(_,i)=>{const t=i/29;const noise=Math.sin(i*1.37+p.sym.length)*Math.max(p.price*.018,Math.abs(p.price-validCost)*.025);return +(validCost+(p.price-validCost)*t+noise).toFixed(2)});
+  if(detailChart)detailChart.dispose();
+  detailChart=echarts.init(document.getElementById('stock-detail-chart'));
+  detailChart.setOption({animationDuration:500,tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.96)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11},valueFormatter:v=>currency+Number(v).toFixed(2)},grid:{left:42,right:18,top:18,bottom:24},xAxis:{type:'category',data:trend.map((_,i)=>i===29?'现在':`-${29-i}日`),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9,interval:6}},yAxis:{type:'value',scale:true,axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>currency+Number(v).toFixed(0)},splitLine:{lineStyle:{color:'rgba(255,255,255,.04)'}}},series:[{name:'模型走势',type:'line',data:trend,smooth:true,symbol:'none',lineStyle:{color:'#ff6a00',width:2},areaStyle:{color:'rgba(255,80,0,.10)'}},{name:'买入参考',type:'line',data:trend.map(()=>validCost),symbol:'none',lineStyle:{color:'rgba(0,229,255,.55)',type:'dashed',width:1}},{name:'现价',type:'line',data:trend.map(()=>p.price),symbol:'none',lineStyle:{color:'rgba(0,230,118,.65)',type:'dashed',width:1}}]});
+}
+function closeStockDetail(){document.getElementById('stock-detail-modal').classList.remove('open');document.body.style.overflow='';}
+document.addEventListener('click',e=>{const row=e.target.closest('.srow');if(row)openStockDetail(row.dataset.symbol);if(e.target.id==='stock-detail-close'||e.target.id==='stock-detail-modal')closeStockDetail()});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList.contains('srow'))openStockDetail(e.target.dataset.symbol);if(e.key==='Escape')closeStockDetail()});
 
 // ── Market tickers ──
 function updateMarkets(prices){
@@ -537,7 +592,7 @@ const panels=document.querySelectorAll('.panel');
 panels.forEach((p,i)=>setTimeout(()=>p.classList.add('fade-up'),300+i*100));
 
 // ── Resize ──
-window.addEventListener('resize',()=>{scale();[chartTrend,chartSector,chartRank,chartAlloc,chartPerf].forEach(c=>c.resize())});
+window.addEventListener('resize',()=>{scale();[chartTrend,chartSector,chartRank,chartAlloc,chartPerf].forEach(c=>c.resize());if(detailChart)detailChart.resize()});
 
 // ── Number animations on load ──
 setTimeout(()=>{
