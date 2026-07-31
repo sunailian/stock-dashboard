@@ -117,6 +117,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .stock-detail-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}.stock-metric{padding:10px 12px;border:1px solid rgba(255,80,0,.12);background:rgba(255,255,255,.025)}.stock-metric label{display:block;font-size:9px;color:var(--text2);letter-spacing:1px}.stock-metric strong{display:block;font-size:20px;color:var(--text);font-family:Mono,monospace;margin-top:5px}.stock-metric strong.up{color:var(--green)}.stock-metric strong.dn{color:var(--red)}
 .stock-detail-body{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr);gap:14px;margin-top:14px}.stock-detail-chart{height:260px;border:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.12)}.stock-detail-chart-title{font-size:10px;color:var(--text2);letter-spacing:1px;padding:10px 12px 0}.stock-detail-chart-canvas{height:calc(100% - 28px)}
 .stock-advice{border:1px solid rgba(255,193,7,.22);background:rgba(255,193,7,.055);padding:14px}.stock-advice-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.stock-advice-heading strong{font-size:12px;color:var(--amber);letter-spacing:1px}.stock-action{font-size:11px;padding:3px 10px;border-radius:2px;font-weight:700}.stock-action.hold{color:var(--amber);background:rgba(255,193,7,.14)}.stock-action.add{color:var(--green);background:rgba(0,230,118,.14)}.stock-action.reduce{color:var(--red);background:rgba(255,61,61,.14)}.stock-advice p{font-size:11px;color:var(--text);line-height:1.7;margin-top:10px}.stock-levels{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.stock-level{padding:9px;background:rgba(0,0,0,.16);border:1px solid rgba(255,255,255,.06)}.stock-level label{display:block;color:var(--text2);font-size:9px}.stock-level b{display:block;color:var(--text);font-size:14px;font-family:Mono,monospace;margin-top:4px}.stock-detail-footer{font-size:9px;color:var(--text2);line-height:1.5;margin-top:12px}
+.structured-analysis{margin-top:14px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px}.analysis-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}.analysis-toolbar-title{font-size:10px;color:var(--orange3);letter-spacing:1.4px}.analysis-meta{font-size:9px;color:var(--text2);margin-top:4px}.analysis-refresh{border:1px solid rgba(255,80,0,.25);background:rgba(255,80,0,.08);color:var(--orange3);font-size:9px;padding:5px 10px;cursor:pointer;border-radius:2px;letter-spacing:.5px}.analysis-refresh:disabled{opacity:.45;cursor:wait}.analysis-risk{display:none;margin-top:9px;padding:7px 9px;border-left:2px solid var(--red);background:rgba(255,61,61,.06);color:#e8aaa3;font-size:9px;line-height:1.55}.analysis-risk.show{display:block}.analysis-evidence{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.evidence-card{padding:9px 11px;background:rgba(255,255,255,.022);border:1px solid rgba(255,255,255,.06)}.evidence-card.bull{border-top-color:rgba(0,230,118,.35)}.evidence-card.bear{border-top-color:rgba(255,61,61,.35)}.evidence-card strong{font-size:9px;letter-spacing:1px}.evidence-card.bull strong{color:var(--green)}.evidence-card.bear strong{color:var(--red)}.evidence-card ul{margin:6px 0 0 14px;color:var(--text);font-size:9px;line-height:1.6}.analysis-grid{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:8px;margin-top:8px}.analysis-field{padding:8px 10px;background:rgba(0,0,0,.13);border:1px solid rgba(255,255,255,.05)}.analysis-field label{display:block;color:var(--text2);font-size:8px;letter-spacing:.8px}.analysis-field p{font-size:9px;color:var(--text);line-height:1.55;margin-top:4px}.analysis-history{font-size:9px;color:var(--cyan);margin-top:8px;min-height:14px}
 @media(max-width:768px){#rec-panel{position:static!important;margin:0!important;height:auto!important;overflow:visible!important}
 #rec-strip{flex-wrap:wrap;overflow:visible}
 #ai-panel{position:static!important;margin:0!important;height:auto!important;overflow:visible!important}
@@ -200,7 +201,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 @media(max-width:768px){
   #health-panel{position:static!important;width:100%!important;height:auto!important;min-height:0!important;margin:0!important}
   .health-head{grid-template-columns:1fr;gap:12px;padding:12px}.health-score{margin:auto}.health-actions{border-left:0;border-top:1px solid rgba(255,255,255,.08);padding:10px 0 0}.health-dims{grid-template-columns:1fr 1fr;padding:10px 12px 0}.health-note{grid-template-columns:1fr;padding:10px 12px 0}
-  #stock-detail-modal{padding:0}.stock-detail-card{width:100%;height:100%;max-height:none;border-radius:0;padding:14px}.stock-detail-body{grid-template-columns:1fr}.stock-detail-chart{height:220px}.stock-detail-metrics{grid-template-columns:1fr 1fr}.stock-detail-title{font-size:20px}
+  #stock-detail-modal{padding:0}.stock-detail-card{width:100%;height:100%;max-height:none;border-radius:0;padding:14px}.stock-detail-body{grid-template-columns:1fr}.stock-detail-chart{height:220px}.stock-detail-metrics{grid-template-columns:1fr 1fr}.stock-detail-title{font-size:20px}.analysis-evidence,.analysis-grid{grid-template-columns:1fr}
 }
 </style></head>
 <body>
@@ -228,7 +229,8 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
   <div class="stock-detail-card">
     <div class="stock-detail-header"><div><div class="stock-detail-kicker">POSITION ANALYSIS · 个股持仓分析</div><div class="stock-detail-title" id="stock-detail-title">-- <span class="stock-detail-name" id="stock-detail-name">--</span></div></div><button class="stock-detail-close" id="stock-detail-close" aria-label="关闭">×</button></div>
     <div class="stock-detail-metrics"><div class="stock-metric"><label>买入股价 · COST</label><strong id="detail-cost">--</strong></div><div class="stock-metric"><label>此刻股价 · NOW</label><strong id="detail-price">--</strong></div><div class="stock-metric"><label>持仓盈利 · P&L</label><strong id="detail-pnl">--</strong></div><div class="stock-metric"><label>收益率 · RETURN</label><strong id="detail-ret">--</strong></div></div>
-    <div class="stock-detail-body"><div class="stock-detail-chart"><div class="stock-detail-chart-title">30日模型走势 · 买入价 / 现价 / 建议位</div><div class="stock-detail-chart-canvas" id="stock-detail-chart"></div></div><div class="stock-advice"><div class="stock-advice-heading"><strong>操作建议 · ACTION PLAN</strong><span class="stock-action hold" id="detail-action">持有</span></div><p id="detail-analysis">正在生成该标的的操作分析。</p><div class="stock-levels"><div class="stock-level"><label>建议买入区间</label><b id="detail-buy-zone">--</b></div><div class="stock-level"><label>建议卖出 / 止盈区间</label><b id="detail-sell-zone">--</b></div></div><div class="stock-detail-footer">规则参考：结合收益率、杠杆属性和当前价格相对成本的位置生成；不构成投资承诺，请结合你的持有周期和风险承受能力执行。</div></div></div>
+    <div class="stock-detail-body"><div class="stock-detail-chart"><div class="stock-detail-chart-title">30日模型走势 · 买入价 / 现价 / 建议位</div><div class="stock-detail-chart-canvas" id="stock-detail-chart"></div></div><div class="stock-advice"><div class="stock-advice-heading"><strong>操作建议 · ACTION PLAN</strong><span class="stock-action hold" id="detail-action">持有</span></div><p id="detail-analysis">正在生成该标的的操作分析。</p><div class="stock-levels"><div class="stock-level"><label>建议入场 / 加仓价</label><b id="detail-buy-zone">--</b></div><div class="stock-level"><label>目标价</label><b id="detail-sell-zone">--</b></div><div class="stock-level"><label>风险 / 止损价</label><b id="detail-stop-loss">--</b></div><div class="stock-level"><label>建议仓位</label><b id="detail-sizing">--</b></div></div><div class="stock-detail-footer">AI 结论必须通过集中度硬风控；第一阶段只使用持仓、价格与组合上下文，不包含实时新闻和财报。</div></div></div>
+    <div class="structured-analysis"><div class="analysis-toolbar"><div><div class="analysis-toolbar-title">证据与决策审计 · EVIDENCE & DECISION LOG</div><div class="analysis-meta" id="analysis-meta">等待结构化分析</div></div><button class="analysis-refresh" id="analysis-refresh">刷新深度分析</button></div><div class="analysis-risk" id="analysis-risk"></div><div class="analysis-evidence"><div class="evidence-card bull"><strong>多头证据 · BULL CASE</strong><ul id="analysis-bull"><li>等待分析</li></ul></div><div class="evidence-card bear"><strong>空头证据 · BEAR CASE</strong><ul id="analysis-bear"><li>等待分析</li></ul></div></div><div class="analysis-grid"><div class="analysis-field"><label>逻辑失效条件</label><p id="analysis-invalidation">--</p></div><div class="analysis-field"><label>持有周期</label><p id="analysis-horizon">--</p></div><div class="analysis-field"><label>上次决策复盘</label><p id="analysis-history">暂无历史记录</p></div></div></div>
   </div>
 </div>
 <div id="stage">
@@ -423,8 +425,78 @@ function refreshAllCharts(){
 }
 
 let detailChart=null;
+let activeDetailSymbol='';
+const DECISION_LOG_KEY='zhuoyuan_decision_log_v1';
+const ANALYSIS_CACHE_KEY='zhuoyuan_analysis_cache_v1';
 function nativeCurrency(ccy){return ccy==='USD'?'$':'HK$'}
 function formatNativePrice(value,ccy){return nativeCurrency(ccy)+Number(value).toFixed(2)}
+function escapeHTML(value){return String(value).replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
+function readStorage(key,fallback){try{return JSON.parse(localStorage.getItem(key))||fallback}catch{return fallback}}
+function companyGroup(symbol){return ['BABA','9988.HK'].includes(symbol)?'ALIBABA':symbol}
+function buildPortfolioContext(p){
+  const values=allPos.map(x=>({...x,marketValueCny:Math.abs(x.price*x.qty*x.fx)}));
+  const invested=values.reduce((sum,x)=>sum+x.marketValueCny,0)||1;
+  const current=values.find(x=>x.sym===p.sym);
+  const sectorValue=values.filter(x=>x.sector===p.sector).reduce((sum,x)=>sum+x.marketValueCny,0);
+  const group=companyGroup(p.sym);
+  const companyValue=values.filter(x=>companyGroup(x.sym)===group).reduce((sum,x)=>sum+x.marketValueCny,0);
+  return {position_weight:current.marketValueCny/invested,sector_weight:sectorValue/invested,company_weight:companyValue/invested,company_group:group,cash_ratio:(portfolio.cash*FX.HKD)/(portfolio.netAssets*FX.HKD||1),annual_target:portfolio.annualTarget};
+}
+function getCachedAnalysis(p){
+  const cache=readStorage(ANALYSIS_CACHE_KEY,{}),item=cache[p.sym];if(!item)return null;
+  const fresh=Date.now()-item.savedAt<6*60*60*1000;
+  const priceClose=Math.abs(p.price-item.price)/(p.price||1)<.02;
+  return fresh&&priceClose?item.data:null;
+}
+function saveAnalysis(p,data){
+  const cache=readStorage(ANALYSIS_CACHE_KEY,{});cache[p.sym]={savedAt:Date.now(),price:p.price,data};localStorage.setItem(ANALYSIS_CACHE_KEY,JSON.stringify(cache));
+  const log=readStorage(DECISION_LOG_KEY,[]);
+  if(!log.some(item=>item.symbol===p.sym&&item.generated_at===data.generated_at))log.unshift({symbol:p.sym,price:p.price,rating:data.rating,generated_at:data.generated_at,confidence:data.confidence});
+  localStorage.setItem(DECISION_LOG_KEY,JSON.stringify(log.slice(0,100)));
+}
+function renderEvidence(id,items){document.getElementById(id).innerHTML=(items||[]).map(item=>`<li>${escapeHTML(item)}</li>`).join('')||'<li>暂无有效证据</li>'}
+function ratingView(rating){
+  if(rating==='Buy')return {label:'买入',tone:'add'};
+  if(rating==='Overweight')return {label:'加仓',tone:'add'};
+  if(rating==='Underweight')return {label:'减仓',tone:'reduce'};
+  if(rating==='Sell')return {label:'卖出',tone:'reduce'};
+  return {label:'持有',tone:'hold'};
+}
+function renderDecisionHistory(p,currentGeneratedAt){
+  const previous=readStorage(DECISION_LOG_KEY,[]).find(item=>item.symbol===p.sym&&item.generated_at!==currentGeneratedAt);
+  const el=document.getElementById('analysis-history');
+  if(!previous){el.textContent='暂无可比较的历史建议';return}
+  const change=(p.price-previous.price)/(previous.price||1)*100;
+  el.textContent=`${previous.rating} @ ${formatNativePrice(previous.price,p.ccy)}，至今 ${change>=0?'+':''}${change.toFixed(1)}%`;
+}
+function applyStructuredAnalysis(p,data,cached=false){
+  const view=ratingView(data.rating),currency=nativeCurrency(p.ccy);
+  const actionEl=document.getElementById('detail-action');actionEl.textContent=view.label;actionEl.className='stock-action '+view.tone;
+  document.getElementById('detail-analysis').textContent=data.executive_summary||'暂无分析摘要';
+  document.getElementById('detail-buy-zone').textContent=data.entry_price?currency+Number(data.entry_price).toFixed(2):'等待确认';
+  document.getElementById('detail-sell-zone').textContent=data.price_target?currency+Number(data.price_target).toFixed(2):'等待确认';
+  document.getElementById('detail-stop-loss').textContent=data.stop_loss?currency+Number(data.stop_loss).toFixed(2):'等待确认';
+  document.getElementById('detail-sizing').textContent=data.position_sizing||'维持现有仓位';
+  const source={deepseek_structured:'DeepSeek结构化分析',rule_fallback:'规则回退',rule_fallback_after_error:'AI失败·规则回退'}[data.source]||data.source;
+  document.getElementById('analysis-meta').textContent=`${source} · 置信度 ${data.confidence||0}% · ${cached?'缓存结果':'刚刚生成'} · 数据范围：持仓/价格/组合`;
+  const risk=document.getElementById('analysis-risk'),flags=data.risk_flags||[];risk.textContent=flags.join('；');risk.classList.toggle('show',flags.length>0);
+  renderEvidence('analysis-bull',data.bull_case);renderEvidence('analysis-bear',data.bear_case);
+  document.getElementById('analysis-invalidation').textContent=(data.invalidation_conditions||[]).join('；')||'暂无';
+  document.getElementById('analysis-horizon').textContent=data.time_horizon||'暂无';
+  renderDecisionHistory(p,data.generated_at);
+}
+async function fetchStructuredAnalysis(p,force=false){
+  const button=document.getElementById('analysis-refresh');
+  if(!force){const cached=getCachedAnalysis(p);if(cached){applyStructuredAnalysis(p,cached,true);return}}
+  button.disabled=true;button.textContent='分析中...';document.getElementById('analysis-meta').textContent='正在生成多空证据并执行集中度风控';
+  try{
+    const payload={symbol:p.sym,name:p.name,ccy:p.ccy,cost:p.cost,price:p.price,price_updated_at:priceTime,qty:p.qty,return_pct:p.ret,sector:p.sector,portfolio_context:buildPortfolioContext(p)};
+    const resp=await fetch(API_BASE+'/analysis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!resp.ok)throw new Error('analysis '+resp.status);
+    const data=await resp.json();saveAnalysis(p,data);if(activeDetailSymbol===p.sym)applyStructuredAnalysis(p,data,false);
+  }catch(e){document.getElementById('analysis-meta').textContent='深度分析暂时不可用，当前显示本地规则建议';console.log('Structured analysis:',e)}
+  finally{button.disabled=false;button.textContent='刷新深度分析'}
+}
 function getStockAdvice(p){
   const ret=p.ret;
   const reduce=p.sector==='杠杆ETF'||ret<=-30||ret>=50;
@@ -435,6 +507,7 @@ function getStockAdvice(p){
 }
 function openStockDetail(symbol){
   const p=allPos.find(x=>x.sym===symbol);if(!p)return;
+  activeDetailSymbol=symbol;
   const ret=p.ret,currency=nativeCurrency(p.ccy);
   const costLabel=p.cost>0?formatNativePrice(p.cost,p.ccy):'负成本';
   const pnl=p.pnl;
@@ -453,15 +526,22 @@ function openStockDetail(symbol){
   document.getElementById('detail-analysis').textContent=advice.analysis;
   document.getElementById('detail-buy-zone').textContent=formatNativePrice(buyBase,p.ccy)+' 附近';
   document.getElementById('detail-sell-zone').textContent=formatNativePrice(sellBase,p.ccy)+' 附近';
+  document.getElementById('detail-stop-loss').textContent=formatNativePrice(p.price*.90,p.ccy)+' 附近';
+  document.getElementById('detail-sizing').textContent='等待组合风控';
+  document.getElementById('analysis-meta').textContent='正在读取结构化分析';
+  document.getElementById('analysis-risk').classList.remove('show');
+  renderEvidence('analysis-bull',['等待分析']);renderEvidence('analysis-bear',['等待分析']);
+  document.getElementById('analysis-invalidation').textContent='--';document.getElementById('analysis-horizon').textContent='--';
   document.getElementById('stock-detail-modal').classList.add('open');document.body.style.overflow='hidden';
   const validCost=p.cost>0?p.cost:p.price*.78;
   const trend=Array.from({length:30},(_,i)=>{const t=i/29;const noise=Math.sin(i*1.37+p.sym.length)*Math.max(p.price*.018,Math.abs(p.price-validCost)*.025);return +(validCost+(p.price-validCost)*t+noise).toFixed(2)});
   if(detailChart)detailChart.dispose();
   detailChart=echarts.init(document.getElementById('stock-detail-chart'));
   detailChart.setOption({animationDuration:500,tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.96)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11},valueFormatter:v=>currency+Number(v).toFixed(2)},grid:{left:52,right:18,top:18,bottom:24},xAxis:{type:'category',data:trend.map((_,i)=>i===29?'现在':`-${29-i}日`),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9,interval:6}},yAxis:{type:'value',scale:true,axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>currency+Number(v).toFixed(2)},splitLine:{lineStyle:{color:'rgba(255,255,255,.04)'}}},series:[{name:'模型走势',type:'line',data:trend,smooth:true,symbol:'none',lineStyle:{color:'#ff6a00',width:2},areaStyle:{color:'rgba(255,80,0,.10)'}},{name:'买入参考',type:'line',data:trend.map(()=>validCost),symbol:'none',lineStyle:{color:'rgba(0,229,255,.55)',type:'dashed',width:1}},{name:'现价',type:'line',data:trend.map(()=>p.price),symbol:'none',lineStyle:{color:'rgba(0,230,118,.65)',type:'dashed',width:1}}]});
+  fetchStructuredAnalysis(p);
 }
-function closeStockDetail(){document.getElementById('stock-detail-modal').classList.remove('open');document.body.style.overflow='';}
-document.addEventListener('click',e=>{const row=e.target.closest('.srow');if(row)openStockDetail(row.dataset.symbol);if(e.target.id==='stock-detail-close'||e.target.id==='stock-detail-modal')closeStockDetail()});
+function closeStockDetail(){document.getElementById('stock-detail-modal').classList.remove('open');document.body.style.overflow='';activeDetailSymbol='';}
+document.addEventListener('click',e=>{const row=e.target.closest('.srow');if(row)openStockDetail(row.dataset.symbol);if(e.target.id==='analysis-refresh'&&activeDetailSymbol){const p=allPos.find(x=>x.sym===activeDetailSymbol);if(p)fetchStructuredAnalysis(p,true)}if(e.target.id==='stock-detail-close'||e.target.id==='stock-detail-modal')closeStockDetail()});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList.contains('srow'))openStockDetail(e.target.dataset.symbol);if(e.key==='Escape')closeStockDetail()});
 
 // ── Market tickers ──
@@ -585,7 +665,7 @@ async function autoLoadAI(){
     await new Promise(r=>setTimeout(r,800));
   }
 }
-setTimeout(autoLoadAI,3000);
+setTimeout(()=>{if(window.innerWidth<=768)autoLoadAI()},3000);
 
 // ── Animations ──
 setTimeout(()=>document.getElementById('loading').classList.add('hidden'),800);
