@@ -391,7 +391,7 @@ for(const p of allPos){const r=p.ret;if(r>50)retBins['>+50%']++;else if(r>=20)re
 const chartPerf=echarts.init(document.getElementById('chart-perf'));
 chartPerf.setOption({tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5'}},grid:{left:40,right:20,top:20,bottom:20},xAxis:{type:'category',data:Object.keys(retBins),axisLabel:{color:'#8a7e72',fontSize:9,rotate:15}},yAxis:{type:'value',axisLabel:{color:'#8a7e72',fontSize:9},splitLine:{lineStyle:{color:'rgba(255,255,255,.03)'}}},series:[{type:'bar',data:Object.values(retBins).map(v=>({value:v,itemStyle:{color:v>2?'#00e676':v>0?'#ff6a00':'#ff3d3d'}})),barWidth:20,itemStyle:{borderRadius:[2,2,0,0]}}]});
 
-// AI fetch on card click
+// AI fetch on card click + auto-load on page open
 async function fetchAI(symbol){
   const cards=document.querySelectorAll('.ai-card');
   cards.forEach(c=>c.style.opacity='.5');
@@ -399,21 +399,28 @@ async function fetchAI(symbol){
     const resp=await fetch(API_BASE+'/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,type:'stock'})});
     const data=await resp.json();
     if(data.analysis){
-      // Update card content
-      const strip=document.getElementById('ai-strip');
-      const existing=[...strip.querySelectorAll('.sym')].find(s=>s.textContent.includes(symbol));
+      const existing=[...document.querySelectorAll('#ai-strip .sym,#rec-strip .sym')].find(s=>s.textContent.replace(/[🎯🟡🔴📈🇨🇳🥇📉⛏️📡]/g,'').trim().includes(symbol));
       if(existing){
         existing.nextElementSibling.textContent=data.analysis;
-        const tag=existing.parentElement.querySelector('.tag');
-        if(data.analysis.includes('止损')){tag.className='tag tag-bear';tag.textContent='止损'}
-        else if(data.analysis.includes('加仓')){tag.className='tag tag-bull';tag.textContent='加仓'}
-        else if(data.analysis.includes('减仓')){tag.className='tag tag-hold';tag.textContent='减仓'}
+        const tag=existing.parentElement.querySelector('.tag')||existing.closest('.ai-card').querySelector('.tag');
+        if(data.analysis.includes('止损')){tag.className='tag tag-bear';tag.textContent='⚠ 止损'}
+        else if(data.analysis.includes('加仓')){tag.className='tag tag-bull';tag.textContent='📈 加仓'}
+        else if(data.analysis.includes('减仓')){tag.className='tag tag-hold';tag.textContent='📉 减仓'}
         else{tag.className='tag tag-hold';tag.textContent='持有'}
       }
     }
   }catch(e){console.log('AI fetch:',e)}
   cards.forEach(c=>c.style.opacity='1');
 }
+// Auto-load: re-fetch all AI cards on page load (sequential, 800ms apart)
+async function autoLoadAI(){
+  const symbols=['GOOG','AAPL','MSFT','NVDA','TSLA','BABA','TLT','APPX','9988.HK','981.HK','100.HK','2824.HK'];
+  for(const sym of symbols){
+    await fetchAI(sym);
+    await new Promise(r=>setTimeout(r,800));
+  }
+}
+setTimeout(autoLoadAI,3000);
 
 // ── Animations ──
 setTimeout(()=>document.getElementById('loading').classList.add('hidden'),800);
