@@ -16,6 +16,9 @@ def as_float(value, default=0.0):
     except (TypeError, ValueError):
         return default
 
+def has_chinese(value):
+    return any('\u4e00' <= char <= '\u9fff' for char in str(value))
+
 def fallback_analysis(body, risk_flags):
     price = max(as_float(body.get('price')), 0.01)
     ret = as_float(body.get('return_pct'))
@@ -63,22 +66,26 @@ def normalize_analysis(raw, body, risk_flags):
         rating = 'Hold'
         risk_flags.append('硬风控已拦截加仓：单一仓位或同公司经济敞口过高')
 
+    def chinese_text(key, default):
+        value = str(raw.get(key) or '').strip()
+        return value if has_chinese(value) else default
+
     def text_list(key, default):
         value = raw.get(key)
         if not isinstance(value, list):
             return default
-        cleaned = [str(item).strip() for item in value if str(item).strip()]
+        cleaned = [str(item).strip() for item in value if str(item).strip() and has_chinese(item)]
         return cleaned[:4] or default
 
     result = fallback.copy()
     result.update({
         'rating': rating,
         'confidence': max(0, min(100, round(as_float(raw.get('confidence'), fallback['confidence'])))),
-        'executive_summary': str(raw.get('executive_summary') or fallback['executive_summary']).strip(),
+        'executive_summary': chinese_text('executive_summary', fallback['executive_summary']),
         'bull_case': text_list('bull_case', fallback['bull_case']),
         'bear_case': text_list('bear_case', fallback['bear_case']),
-        'position_sizing': str(raw.get('position_sizing') or fallback['position_sizing']).strip(),
-        'time_horizon': str(raw.get('time_horizon') or fallback['time_horizon']).strip(),
+        'position_sizing': chinese_text('position_sizing', fallback['position_sizing']),
+        'time_horizon': chinese_text('time_horizon', fallback['time_horizon']),
         'invalidation_conditions': text_list('invalidation_conditions', fallback['invalidation_conditions']),
         'source': 'deepseek_structured',
     })
@@ -167,6 +174,7 @@ def analysis():
     else:
         prompt = f"""你是个人投资组合的研究经理。只根据下面提供的数据工作，不得编造实时新闻、财报、估值或历史K线。
 目标年化收益为20%，但风险纪律优先于收益目标。请同时给出多头和空头证据，并输出严格 JSON，不要使用 Markdown。
+除 rating 的固定枚举值和股票代码外，所有分析文字必须使用简体中文回复，不得输出英文操作建议。
 rating 必须是 Buy、Overweight、Hold、Underweight、Sell 之一。
 价格必须使用标的原始报价币种。confidence 为0到100整数。
 JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case(数组), position_sizing, entry_price, stop_loss, price_target, time_horizon, invalidation_conditions(数组)。
