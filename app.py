@@ -55,8 +55,11 @@ def normalize_analysis(raw, body, risk_flags):
     if rating not in RATINGS:
         rating = fallback['rating']
     context = body.get('portfolio_context') or {}
-    concentrated = as_float(context.get('position_weight')) >= 0.18 or as_float(context.get('company_weight')) >= 0.20
-    if concentrated and rating in {'Buy', 'Overweight'}:
+    position_weight = as_float(context.get('position_weight'))
+    company_weight = as_float(context.get('company_weight'))
+    concentrated = position_weight >= 0.18 or company_weight >= 0.20
+    blocked_add = concentrated and rating in {'Buy', 'Overweight'}
+    if blocked_add:
         rating = 'Hold'
         risk_flags.append('硬风控已拦截加仓：单一仓位或同公司经济敞口过高')
 
@@ -79,6 +82,15 @@ def normalize_analysis(raw, body, risk_flags):
         'invalidation_conditions': text_list('invalidation_conditions', fallback['invalidation_conditions']),
         'source': 'deepseek_structured',
     })
+    if concentrated:
+        exposure = max(position_weight, company_weight) * 100
+        action = '优先按计划降低敞口' if rating in {'Underweight', 'Sell'} else '仅维持现有仓位并等待敞口下降'
+        result['position_sizing'] = f'硬风控：当前集中敞口 {exposure:.1f}%，禁止新增仓位；{action}。'
+        if blocked_add:
+            result['executive_summary'] = (
+                '模型原始结论包含加仓倾向，但因集中度超过上限，最终操作已强制调整为持有且禁止加仓。'
+                + result['executive_summary']
+            )
     for field in ('entry_price', 'stop_loss', 'price_target'):
         value = as_float(raw.get(field), fallback[field])
         result[field] = round(value, 2) if value > 0 else fallback[field]
