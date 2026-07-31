@@ -87,7 +87,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #rec-panel{position:absolute;bottom:106px;left:12px;right:12px;z-index:5;height:110px}
 #rec-panel .panel-title{padding:4px 18px 2px;font-size:10px}
 #rec-strip{display:flex;gap:6px;flex-wrap:wrap;padding:2px 18px 2px;align-content:flex-start}
-#ai-panel{position:absolute;bottom:12px;left:12px;right:12px;z-index:4;height:90px}
+  #ai-panel{position:absolute;bottom:12px;left:12px;right:12px;z-index:4;height:90px}
 #ai-panel .panel-title{padding:4px 18px 2px;font-size:10px}
 #ai-strip{display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 4px}
 #ai-strip .ai-card{min-width:160px;flex:1;max-width:240px;padding:6px 10px}
@@ -99,6 +99,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .ai-card .sym{font-size:15px;font-weight:700;color:var(--orange)}  
 .ai-card .act{font-size:11px;margin-top:3px;line-height:1.4;color:var(--text)}
 .ai-card .tag{display:inline-block;font-size:8px;padding:2px 7px;border-radius:2px;margin-top:5px;letter-spacing:1px}
+/* Portfolio health report */
+#health-panel{position:absolute;bottom:0;left:12px;right:12px;z-index:6;min-height:300px;padding-bottom:14px}
+#health-panel .panel-title{padding-bottom:4px}
+.health-head{display:grid;grid-template-columns:150px minmax(220px,1fr) minmax(280px,1.2fr);gap:18px;align-items:center;padding:8px 18px 14px;border-bottom:1px solid rgba(255,255,255,.05)}
+.health-score{width:112px;height:112px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--orange3) var(--score),rgba(255,255,255,.06) 0);position:relative;box-shadow:0 0 28px rgba(255,80,0,.12)}
+.health-score::after{content:'';position:absolute;inset:8px;border-radius:50%;background:var(--bg);border:1px solid rgba(255,80,0,.16)}
+.health-score-inner{position:relative;z-index:1;text-align:center}.health-score-num{font-size:34px;line-height:1;color:#fff}.health-score-max{font-size:9px;color:var(--text2);letter-spacing:1px;margin-top:3px}
+.health-summary .health-status{font-size:18px;color:var(--orange3);font-weight:600}.health-summary p{font-size:11px;line-height:1.65;color:var(--text);margin-top:8px;max-width:560px}.health-meta{font-size:9px;color:var(--text2);margin-top:8px;letter-spacing:.5px}
+.health-actions{border-left:1px solid rgba(255,255,255,.08);padding-left:18px}.health-actions .action-label{font-size:10px;color:var(--amber);letter-spacing:1px;margin-bottom:6px}.health-actions p{font-size:10px;line-height:1.7;color:var(--text)}
+.health-dims{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:12px 18px 0}.health-dim{background:rgba(255,255,255,.025);border:1px solid rgba(255,80,0,.10);padding:9px 10px;border-radius:2px}.health-dim-top{display:flex;justify-content:space-between;gap:6px;font-size:10px}.health-dim-top b{color:var(--text)}.health-dim-top span{color:var(--orange3);font-family:Mono,monospace}.health-dim small{display:block;color:var(--text2);font-size:9px;line-height:1.45;margin-top:5px;min-height:27px}.health-bar{height:3px;background:rgba(255,255,255,.07);margin-top:8px;border-radius:2px;overflow:hidden}.health-bar i{display:block;height:100%;width:var(--fill);background:linear-gradient(90deg,var(--orange),var(--orange3));border-radius:2px}
+.health-note{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 18px 0}.health-note-card{font-size:10px;line-height:1.6;padding:8px 10px;background:rgba(255,255,255,.02);border-left:2px solid var(--orange)}.health-note-card strong{display:block;color:var(--orange3);font-size:9px;letter-spacing:1px;margin-bottom:2px}.health-note-card p{color:var(--text)}
 @media(max-width:768px){#rec-panel{position:static!important;margin:0!important;height:auto!important;overflow:visible!important}
 #rec-strip{flex-wrap:wrap;overflow:visible}
 #ai-panel{position:static!important;margin:0!important;height:auto!important;overflow:visible!important}
@@ -143,7 +154,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 @media(min-width:769px){
   html{min-height:100%;overflow-x:hidden;overflow-y:auto}
   body{min-width:0;min-height:100%;height:auto;overflow-x:hidden;overflow-y:auto}
-  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 210px 246px auto auto;grid-template-areas:'header header header' 'sector hero alloc' 'rank trend perf' 'us . hk' 'rec rec rec' 'ai ai ai';gap:12px;padding:0 12px 12px;overflow:visible}
+  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 210px 246px auto auto auto;grid-template-areas:'header header header' 'sector hero alloc' 'rank trend perf' 'us . hk' 'health health health' 'rec rec rec' 'ai ai ai';gap:12px;padding:0 12px 12px;overflow:visible}
   #header{position:relative;grid-area:header;inset:auto;width:auto;height:auto;padding:0 12px}
   #fs-btn{top:22px;right:12px}
   #hero{position:relative;grid-area:hero;inset:auto;width:auto;height:auto;min-width:0}
@@ -156,6 +167,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #hk-panel{position:relative;grid-area:hk;inset:auto;width:auto;height:auto;min-height:246px;overflow-y:auto}
   #rec-panel{position:relative;grid-area:rec;inset:auto;width:auto;height:auto;min-height:110px}
   #ai-panel{position:relative;grid-area:ai;inset:auto;width:auto;height:auto;min-height:90px}
+  #health-panel{position:relative;grid-area:health;inset:auto;width:auto;height:auto;min-height:300px}
   #rec-strip,#ai-strip{overflow:visible}
   #particles{inset:0;width:100%;height:100%;overflow:hidden}
 }
@@ -173,7 +185,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #ai-panel,#rec-panel{min-height:0}
 }
 @media(max-width:900px) and (min-width:769px){
-  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px 246px auto auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'rank perf' 'us hk' 'rec rec' 'ai ai'}
+  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px 246px auto auto auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'rank perf' 'us hk' 'health health' 'rec rec' 'ai ai'}
+}
+@media(max-width:1100px) and (min-width:769px){
+  .health-head{grid-template-columns:130px minmax(180px,1fr) minmax(220px,1fr);gap:12px}.health-dims{gap:5px;padding-left:12px;padding-right:12px}.health-note{padding-left:12px;padding-right:12px}
+}
+@media(max-width:768px){
+  #health-panel{position:static!important;width:100%!important;height:auto!important;min-height:0!important;margin:0!important}
+  .health-head{grid-template-columns:1fr;gap:12px;padding:12px}.health-score{margin:auto}.health-actions{border-left:0;border-top:1px solid rgba(255,255,255,.08);padding:10px 0 0}.health-dims{grid-template-columns:1fr 1fr;padding:10px 12px 0}.health-note{grid-template-columns:1fr;padding:10px 12px 0}
 }
 </style></head>
 <body>
@@ -235,6 +254,18 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
   <div class="panel" id="alloc-panel"><div class="panel-title">持仓占比 · ALLOCATION</div><div class="chart-wrap" id="chart-alloc"></div></div>
   <div class="panel" id="perf-panel"><div class="panel-title">收益率分布 · P&L SPECTRUM</div><div class="chart-wrap" id="chart-perf"></div></div>
   <div class="panel" id="hk-panel"><div class="panel-title">港股明细 · HK DETAIL</div><div id="hk-list"></div></div>
+
+  <!-- PORTFOLIO HEALTH REPORT -->
+  <div class="panel" id="health-panel">
+    <div class="panel-title">📋 持仓健康度总览 · PORTFOLIO HEALTH REPORT</div>
+    <div class="health-head">
+      <div class="health-score" id="health-score-ring" style="--score:0%"><div class="health-score-inner"><div class="health-score-num" id="health-score">--</div><div class="health-score-max">/ 100</div></div></div>
+      <div class="health-summary"><div class="health-status" id="health-status">分析中...</div><p id="health-summary-text">正在根据最新持仓、收益和现金数据计算组合健康度。</p><div class="health-meta">评分模型：收益质量 25% · 分散度 20% · 风险控制 20% · 流动性 15% · 目标达成 20%</div></div>
+      <div class="health-actions"><div class="action-label">优先动作 · PRIORITY ACTION</div><p id="health-priority">等待持仓数据同步后生成。</p></div>
+    </div>
+    <div class="health-dims" id="health-dims"></div>
+    <div class="health-note" id="health-notes"></div>
+  </div>
 
   <!-- RECOMMENDATIONS -->
   <div class="panel" id="rec-panel">
@@ -309,9 +340,49 @@ function calcAllPos(prices){
   return {all:[...us,...hk],us,hk};
 }
 
+function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
+function renderHealthReport(positions){
+  if(!positions.length)return;
+  const invested=positions.reduce((sum,p)=>sum+Math.abs(p.cost)*p.qty*(p.ccy==='USD'?7.8:1),0);
+  const positive=positions.filter(p=>p.ret>=0).length;
+  const positiveRate=positive/positions.length;
+  const losingWeight=positions.filter(p=>p.ret<0).reduce((sum,p)=>sum+Math.abs(p.cost)*p.qty*(p.ccy==='USD'?7.8:1),0)/(invested||1);
+  const sectors={};positions.forEach(p=>{const weight=Math.abs(p.cost)*p.qty*(p.ccy==='USD'?7.8:1);sectors[p.sector]=(sectors[p.sector]||0)+weight});
+  const sectorCount=Object.keys(sectors).length;
+  const largest=[...positions].sort((a,b)=>Math.abs(b.cost)*b.qty*(b.ccy==='USD'?7.8:1)-Math.abs(a.cost)*a.qty*(a.ccy==='USD'?7.8:1))[0];
+  const largestWeight=Math.abs(largest.cost)*largest.qty*(largest.ccy==='USD'?7.8:1)/(invested||1);
+  const leverage=positions.filter(p=>p.sector==='杠杆ETF').length;
+  const totalReturn=portfolio.totalReturn;
+  const performanceScore=clamp(Math.round(10+totalReturn/portfolio.annualTarget*10+positiveRate*5),0,25);
+  const diversificationScore=clamp(Math.round(8+Math.min(8,sectorCount/7*8)+Math.max(0,4-largestWeight*4)),0,20);
+  const riskScore=clamp(Math.round(20-Math.min(12,losingWeight*12)-leverage*3),0,20);
+  const liquidityScore=clamp(Math.round(5+Math.min(1,portfolio.buyPower/(portfolio.netAssets||1))*10),0,15);
+  const goalScore=clamp(Math.round(Math.min(20,10+totalReturn/portfolio.annualTarget*8)),0,20);
+  const dimensions=[
+    {name:'收益质量',score:performanceScore,max:25,desc:`${positive}/${positions.length} 个仓位为正收益`},
+    {name:'分散度',score:diversificationScore,max:20,desc:`覆盖 ${sectorCount} 个板块，最大仓位 ${(largestWeight*100).toFixed(0)}%`},
+    {name:'风险控制',score:riskScore,max:20,desc:`亏损仓位权重 ${(losingWeight*100).toFixed(0)}%${leverage?'，含杠杆 ETF':''}`},
+    {name:'流动性',score:liquidityScore,max:15,desc:`购买力约占净资产 ${(portfolio.buyPower/portfolio.netAssets*100).toFixed(0)}%`},
+    {name:'目标达成',score:goalScore,max:20,desc:`当前收益 ${totalReturn.toFixed(1)}%，目标 ${portfolio.annualTarget}%`}
+  ];
+  const total=dimensions.reduce((sum,d)=>sum+d.score,0);
+  const status=total>=85?'健康':total>=70?'良好，但需优化':total>=55?'中等，建议收敛风险':'偏弱，需要优先整改';
+  const weak=[...dimensions].sort((a,b)=>(a.score/a.max)-(b.score/b.max))[0];
+  const worst=[...positions].sort((a,b)=>a.ret-b.ret)[0];
+  const summary=total>=85?'组合整体结构稳健，收益表现已超过年化目标，但仍需持续检查集中度和回撤。':total>=70?'组合具备较好的收益基础和流动性，主要拖累来自亏损仓位与风险暴露，适合边持有边收敛风险。':'组合仍有修复空间，当前应优先降低高波动和深度亏损仓位，避免用新增资金掩盖结构性问题。';
+  document.getElementById('health-score').textContent=total;
+  document.getElementById('health-score-ring').style.setProperty('--score',total+'%');
+  document.getElementById('health-status').textContent=status;
+  document.getElementById('health-summary-text').textContent=summary;
+  document.getElementById('health-priority').textContent=`优先处理「${weak.name}」维度：${weak.desc}。建议先复核 ${worst.sym}（当前 ${worst.ret.toFixed(1)}%）的止损/减仓规则，再调整新增仓位。`;
+  document.getElementById('health-dims').innerHTML=dimensions.map(d=>`<div class="health-dim"><div class="health-dim-top"><b>${d.name}</b><span>${d.score}/${d.max}</span></div><small>${d.desc}</small><div class="health-bar"><i style="--fill:${d.score/d.max*100}%"></i></div></div>`).join('');
+  const largestLabel=largest.sym+(largestWeight>.2?'集中度偏高':'占比可控');
+  document.getElementById('health-notes').innerHTML=`<div class="health-note-card"><strong>优势 · STRENGTH</strong><p>收益 ${totalReturn.toFixed(1)}% 已超过年化目标 ${portfolio.annualTarget}%，且 ${positive}/${positions.length} 个仓位保持正收益。</p></div><div class="health-note-card"><strong>关注 · WATCH</strong><p>${largestLabel}；${leverage?'杠杆 ETF 会放大波动，需单独设定仓位上限。':'目前未发现杠杆 ETF 集中风险。'}</p></div><div class="health-note-card"><strong>执行 · ACTION</strong><p>保留购买力作为缓冲，新增资金优先补足低相关资产，避免继续加码当前最弱仓位。</p></div>`;
+}
 
 function refreshAllCharts(){
   const d=allPos;
+  renderHealthReport(d);
   // Hero
   document.getElementById('hero-pct').textContent=((allPos.reduce((s,p)=>s+p.pnl,0)/(allPos.reduce((s,p)=>s+Math.abs(p.cost)*p.qty,0)||1))*100).toFixed(1)+'%';
   // Rank
