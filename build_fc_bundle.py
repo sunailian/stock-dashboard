@@ -39,7 +39,7 @@ def build_bundle(python_version, architecture, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--python-version', default='3.10', choices=('3.8', '3.9', '3.10', '3.11', '3.12', '3.13'))
+    parser.add_argument('--python-version', default='3.12', choices=('3.8', '3.9', '3.10', '3.11', '3.12', '3.13'))
     parser.add_argument('--architecture', default='x86_64', choices=('x86_64', 'aarch64'))
     parser.add_argument('--output', default=str(ROOT / 'dist' / 'stock-dashboard-fc.zip'))
     args = parser.parse_args()

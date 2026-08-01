@@ -17,7 +17,7 @@ Longport 4.x Linux wheel 当前要求 glibc 2.39。为兼容常规阿里云 FC P
 先在 FC 控制台确认 Python 版本和处理器架构，然后运行：
 
 ```bash
-python3 build_fc_bundle.py --python-version 3.10 --architecture x86_64
+python3 build_fc_bundle.py --python-version 3.12 --architecture x86_64
 ```
 
 生成文件：`dist/stock-dashboard-fc.zip`。
@@ -25,7 +25,7 @@ python3 build_fc_bundle.py --python-version 3.10 --architecture x86_64
 如果 FC 使用 arm64：
 
 ```bash
-python3 build_fc_bundle.py --python-version 3.10 --architecture aarch64
+python3 build_fc_bundle.py --python-version 3.12 --architecture aarch64
 ```
 
 将 ZIP 作为函数代码包上传，不能再只上传其中的 `app.py`。原有 Longbridge 和登录环境变量保持不变。
