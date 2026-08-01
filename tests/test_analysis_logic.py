@@ -34,6 +34,8 @@ def load_logic():
         'longbridge_symbol', 'longbridge_counter_id', 'nested_dicts',
         'quote_timestamp', 'latest_quote_point',
         'normalize_longbridge_candlesticks',
+        'normalize_valuation_snapshot', 'normalize_financial_snapshot',
+        'normalize_eps_forecast', 'normalize_rating_snapshot', 'research_evidence',
         'normalize_order_status', 'normalize_pending_orders', 'parse_event_day',
         'symbol_from_counter', 'normalize_finance_events',
     }
@@ -276,6 +278,29 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertEqual(result['composite']['signal'],'neutral')
         self.assertEqual(result['composite']['data_coverage'],.4)
         self.assertTrue(all(item['contribution']==0 for item in result['factors'].values()))
+
+    def test_research_normalizers_and_shadow_coverage(self):
+        valuation=self.logic['normalize_valuation_snapshot']({'overview':{'date':'2026-07-31','metrics':{'pe':{'metric':'20','industry_median':'18'}}},'history':{'metrics':{'pe':{'list':[{'value':'10'},{'value':'30'}]}}}})
+        financial=self.logic['normalize_financial_snapshot']({'report':'2026.Q2','indicators':[{'field_name':'operating_revenue','indicator_value':'1000','yoy':'12.5%'},{'field_name':'roe','indicator_value':'18%'}]})
+        forecast=self.logic['normalize_eps_forecast']({'items':[{'forecast_start_date':'1000000','forecast_eps_mean':'2','institution_total':'10'},{'forecast_start_date':str(1000000+30*86400),'forecast_eps_mean':'2.2','institution_total':'12'}]})
+        ratings=self.logic['normalize_rating_snapshot']({'instratings':{'target':'125','recommend':'buy','evaluate':{'strong_buy':'4','buy':'3','hold':'2'}}},{})
+        self.assertEqual(valuation['metrics']['pe']['historical_percentile'],50)
+        self.assertEqual(financial['indicators']['operating_revenue']['yoy'],.125)
+        self.assertEqual(financial['indicators']['roe']['value'],.18)
+        self.assertEqual(forecast['revision_30d_pct'],10)
+        self.assertEqual(ratings['coverage_count'],9)
+        points=[{'date':str(index),'open':100+index*.1,'close':100+index*.1,'high':101+index*.1,'low':99+index*.1,'volume':1000} for index in range(250)]
+        research={'valuation':valuation,'financial':financial,'forecast':forecast,'ratings':ratings}
+        result=self.logic['factor_analysis_from_history']('NVDA.US',{'points':points,'as_of':'2026-07-31'},research=research)
+        self.assertEqual(result['composite']['data_coverage'],1)
+        self.assertEqual(result['composite']['decision_weight'],0)
+
+    def test_research_evidence_is_explicit_and_auditable(self):
+        snapshot={'coverage_pct':75,'valuation':{'metrics':{'pe':{'value':20,'historical_percentile':25}}},'financial':{'indicators':{'operating_revenue':{'yoy':.1},'net_profit':{'yoy':-.05}}},'forecast':{'revision_30d_pct':2.5},'ratings':{'target_price':110,'coverage_count':12}}
+        evidence=self.logic['research_evidence'](snapshot,100)
+        self.assertTrue(any('历史分位' in item for item in evidence['bull']))
+        self.assertTrue(any('净利润同比' in item for item in evidence['bear']))
+        self.assertTrue(any('覆盖 75%' in item for item in evidence['limitations']))
 
     def test_portfolio_risk_metrics_and_contributions_are_consistent(self):
         points_a=[];points_b=[]

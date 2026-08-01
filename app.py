@@ -42,6 +42,7 @@ ACCOUNT_CACHE = {'saved_at': 0, 'snapshot': None}
 MARKET_CACHE = {'saved_at': 0, 'data': None}
 PORTFOLIO_RISK_CACHE = {'saved_at': 0, 'signature': None, 'data': None}
 EVENT_CACHE = {'saved_at': 0, 'signature': None, 'data': None}
+RESEARCH_CACHE = {}
 QUOTE_CONTEXT_CACHE = {'signature': None, 'context': None}
 QUOTE_CONTEXT_LOCK = threading.Lock()
 ACTIVE_ORDER_STATUSES = {
@@ -445,6 +446,163 @@ def get_upcoming_finance_events(symbols, force=False, today=None):
         data = {'events':[], 'complete':False, 'error':str(exc), 'source':'longbridge_finance_calendar', 'fetched_at':iso_now()}
     EVENT_CACHE.update({'saved_at':time.time(), 'signature':signature, 'data':data})
     return data
+
+def normalize_valuation_snapshot(data):
+    overview = data.get('overview') or {}
+    metrics = overview.get('metrics') or data.get('metrics') or {}
+    history_metrics = ((data.get('history') or {}).get('metrics') or {})
+    normalized = {}
+    for key in ('pe', 'pb', 'ps', 'dvd_yld'):
+        item = metrics.get(key) or {}
+        value = as_float(str(item.get('metric') or item.get('value') or '').rstrip('xX%'), float('nan'))
+        if not math.isfinite(value):
+            continue
+        historical = [as_float(row.get('value'), float('nan')) for row in ((history_metrics.get(key) or {}).get('list') or [])]
+        historical = [number for number in historical if math.isfinite(number)]
+        normalized[key] = {
+            'value':round(value, 4), 'industry_median':as_float(item.get('industry_median')) or None,
+            'historical_percentile':round(sum(number <= value for number in historical) / len(historical) * 100, 1) if historical else None,
+            'history_count':len(historical),
+        }
+    return {'as_of':overview.get('date'), 'currency_symbol':overview.get('ccy_symbol'), 'metrics':normalized}
+
+def normalize_financial_snapshot(data):
+    indicators = {}
+    for item in data.get('indicators') or []:
+        name = str(item.get('field_name') or '')
+        if not name:
+            continue
+        raw_value = str(item.get('indicator_value') or '').strip()
+        is_percent = raw_value.endswith('%')
+        value = as_float(raw_value.rstrip('%'), float('nan'))
+        yoy_text = str(item.get('yoy') or '').strip()
+        yoy = as_float(yoy_text.rstrip('%'), float('nan'))
+        if math.isfinite(yoy) and yoy_text.endswith('%'):
+            yoy /= 100
+        indicators[name] = {
+            'value':round(value / 100 if is_percent and math.isfinite(value) else value, 6) if math.isfinite(value) else None,
+            'display_value':raw_value or None, 'yoy':yoy,
+        }
+        if not math.isfinite(indicators[name]['yoy']):
+            indicators[name]['yoy'] = None
+    return {'period':data.get('report'), 'period_label':data.get('report_txt'), 'currency':data.get('currency'), 'indicators':indicators}
+
+def normalize_eps_forecast(data):
+    rows = []
+    for item in data.get('items') or []:
+        mean = as_float(item.get('forecast_eps_mean'), float('nan'))
+        start = int(as_float(item.get('forecast_start_date')))
+        if not math.isfinite(mean) or start <= 0:
+            continue
+        rows.append({
+            'timestamp':start, 'date':datetime.fromtimestamp(start, timezone.utc).date().isoformat(),
+            'mean':mean, 'median':as_float(item.get('forecast_eps_median')) or None,
+            'low':as_float(item.get('forecast_eps_lowest')) or None, 'high':as_float(item.get('forecast_eps_highest')) or None,
+            'institution_total':int(as_float(item.get('institution_total'))),
+        })
+    rows.sort(key=lambda item:item['timestamp'])
+    if not rows:
+        return {'latest':None, 'revision_30d_pct':None, 'history_count':0}
+    latest = rows[-1]
+    cutoff = latest['timestamp'] - 30 * 86400
+    previous = min(rows, key=lambda item:abs(item['timestamp'] - cutoff))
+    revision = (latest['mean'] / previous['mean'] - 1) * 100 if previous['mean'] else None
+    return {'latest':latest, 'revision_30d_pct':round(revision, 2) if revision is not None else None, 'history_count':len(rows)}
+
+def normalize_rating_snapshot(latest_data, detail_data):
+    candidates = list(nested_dicts({'latest':latest_data, 'detail':detail_data}))
+    evaluate = next((item.get('evaluate') for item in candidates if isinstance(item.get('evaluate'), dict) and any(key in item['evaluate'] for key in ('strong_buy', 'buy', 'hold', 'sell'))), {})
+    target = next((item.get('target') for item in candidates if isinstance(item.get('target'), (str, int, float)) and as_float(item.get('target')) > 0), None)
+    target_detail = next((item.get('target') for item in candidates if isinstance(item.get('target'), dict) and item['target'].get('highest_price')), {})
+    recommendation = next((item.get('recommend') for item in candidates if item.get('recommend')), None)
+    updated_at = next((item.get('updated_at') for item in candidates if item.get('updated_at')), None)
+    total = sum(int(as_float(evaluate.get(key))) for key in ('strong_buy', 'buy', 'hold', 'under', 'sell'))
+    return {
+        'recommendation':recommendation, 'target_price':as_float(target) or None,
+        'target_low':as_float(target_detail.get('lowest_price')) or None, 'target_high':as_float(target_detail.get('highest_price')) or None,
+        'ratings':{key:int(as_float(evaluate.get(key))) for key in ('strong_buy', 'buy', 'hold', 'under', 'sell')},
+        'coverage_count':total, 'updated_at':updated_at,
+    }
+
+def get_research_snapshot(symbol, force=False):
+    symbol = normalized_symbol(symbol)
+    cached = RESEARCH_CACHE.get(symbol)
+    if not force and cached and time.time() - cached['saved_at'] < 6 * 60 * 60:
+        return cached['data']
+    counter_id = longbridge_counter_id(symbol)
+    endpoints = {
+        'valuation':('/v1/quote/valuation/detail', {'counter_id':counter_id}),
+        'financial':('/v1/quote/financials/latest-report', {'counter_id':counter_id}),
+        'forecast':('/v1/quote/forecast-eps', {'counter_id':counter_id}),
+        'rating_latest':('/v1/quote/institution-rating-latest', {'counter_id':counter_id}),
+        'rating_detail':('/v1/quote/institution-ratings', {'counter_id':counter_id}),
+    }
+    raw, errors = {}, {}
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {name:pool.submit(longbridge_request, path, params) for name, (path, params) in endpoints.items()}
+        for name, future in futures.items():
+            try:
+                raw[name] = future.result()
+            except Exception as exc:
+                raw[name], errors[name] = {}, str(exc)
+    normalizers = {
+        'valuation':lambda:normalize_valuation_snapshot(raw['valuation']),
+        'financial':lambda:normalize_financial_snapshot(raw['financial']),
+        'forecast':lambda:normalize_eps_forecast(raw['forecast']),
+        'ratings':lambda:normalize_rating_snapshot(raw['rating_latest'], raw['rating_detail']),
+    }
+    defaults = {
+        'valuation':{'as_of':None, 'currency_symbol':None, 'metrics':{}},
+        'financial':{'period':None, 'period_label':None, 'currency':None, 'indicators':{}},
+        'forecast':{'latest':None, 'revision_30d_pct':None, 'history_count':0},
+        'ratings':{'recommendation':None, 'target_price':None, 'target_low':None, 'target_high':None, 'ratings':{}, 'coverage_count':0, 'updated_at':None},
+    }
+    sections = {}
+    for name, normalizer in normalizers.items():
+        try:
+            sections[name] = normalizer()
+        except Exception as exc:
+            sections[name], errors[f'{name}_normalize'] = defaults[name], str(exc)
+    available = {
+        'valuation':bool(sections['valuation']['metrics']),
+        'financial':bool(sections['financial']['indicators']),
+        'forecast':sections['forecast']['latest'] is not None,
+        'ratings':bool(sections['ratings']['recommendation'] or sections['ratings']['coverage_count']),
+    }
+    data = {
+        'symbol':symbol, **sections, 'available':available,
+        'coverage_pct':round(sum(available.values()) / len(available) * 100),
+        'complete':all(available.values()), 'errors':errors,
+        'source':'longbridge_fundamental_research', 'fetched_at':iso_now(),
+    }
+    RESEARCH_CACHE[symbol] = {'saved_at':time.time(), 'data':data}
+    return data
+
+def research_evidence(snapshot, current_price):
+    bull, bear, limitations = [], [], []
+    pe = (((snapshot.get('valuation') or {}).get('metrics') or {}).get('pe') or {})
+    percentile_value = pe.get('historical_percentile')
+    if pe.get('value') is not None:
+        text = f"PE(TTM) {pe['value']:.2f} 倍，近5年历史分位 {percentile_value:.1f}%" if percentile_value is not None else f"PE(TTM) {pe['value']:.2f} 倍"
+        (bull if percentile_value is not None and percentile_value <= 35 else bear if percentile_value is not None and percentile_value >= 70 else limitations).append(text)
+    indicators = ((snapshot.get('financial') or {}).get('indicators') or {})
+    revenue_yoy = (indicators.get('operating_revenue') or {}).get('yoy')
+    profit_yoy = (indicators.get('net_profit') or {}).get('yoy')
+    if revenue_yoy is not None:
+        (bull if revenue_yoy > 0 else bear).append(f'最新报告期营业收入同比 {revenue_yoy*100:+.1f}%')
+    if profit_yoy is not None:
+        (bull if profit_yoy > 0 else bear).append(f'最新报告期净利润同比 {profit_yoy*100:+.1f}%')
+    revision = (snapshot.get('forecast') or {}).get('revision_30d_pct')
+    if revision is not None:
+        (bull if revision > 1 else bear if revision < -1 else limitations).append(f'过去30天一致EPS均值修正 {revision:+.1f}%')
+    ratings = snapshot.get('ratings') or {}
+    target = as_float(ratings.get('target_price'))
+    if target > 0 and current_price > 0:
+        upside = (target / current_price - 1) * 100
+        (bull if upside > 5 else bear if upside < -5 else limitations).append(f'机构一致目标价较当前价空间 {upside:+.1f}%（覆盖 {ratings.get("coverage_count") or 0}）')
+    if snapshot.get('coverage_pct', 0) < 100:
+        limitations.append(f"Longbridge研究数据覆盖 {snapshot.get('coverage_pct', 0)}%，缺失部分不参与判断")
+    return {'bull':bull[:4], 'bear':bear[:4], 'limitations':limitations[:4]}
 
 def sina_codes(symbols):
     codes, mapping = ['gb_$inx', 'gb_ixic'], {'gb_$inx':'SPX.US', 'gb_ixic':'IXIC.US'}
@@ -1269,8 +1427,9 @@ def deterministic_price_plan(technical):
         'basis':{'entry':'MA20/MA50与1.5倍ATR支撑区间', 'stop':'MA50结构位与2倍ATR取更保守值', 'target':'当前价向上2倍初始风险距离'},
     }
 
-def factor_analysis_from_history(symbol, history, market=None):
+def factor_analysis_from_history(symbol, history, market=None, research=None):
     points = history.get('points') or []
+    research = research or {}
     technical = history.get('technical') or technical_snapshot(points)
     market = market or ('HK' if normalized_symbol(symbol).endswith('.HK') else 'US')
     closes = [as_float(item.get('close')) for item in points if as_float(item.get('close')) > 0]
@@ -1295,22 +1454,60 @@ def factor_analysis_from_history(symbol, history, market=None):
     }
     positive_trend = bool(momentum_raw['above_ma200'] and momentum_raw['ma50_above_ma200'] and as_float(momentum_raw['return_60d']) > 0)
     negative_trend = bool(not momentum_raw['above_ma200'] and as_float(momentum_raw['return_60d']) < 0)
-    warnings = ['尚未接入可审计的估值、质量和一致预期快照，三个因子按缺失处理', '当前没有合格横截面，因此不生成伪造的百分位或Z分数']
-    coverage = .40
+    valuation = research.get('valuation') or {}
+    financial = research.get('financial') or {}
+    forecast = research.get('forecast') or {}
+    ratings = research.get('ratings') or {}
+    valuation_metrics = valuation.get('metrics') or {}
+    financial_indicators = financial.get('indicators') or {}
+    pe = valuation_metrics.get('pe') or {}
+    value_available = bool(valuation_metrics)
+    quality_available = bool(financial_indicators)
+    expectation_available = bool(forecast.get('latest') or ratings.get('coverage_count'))
+    value_raw = {
+        'pe_ttm':pe.get('value'), 'pe_historical_percentile':pe.get('historical_percentile'),
+        'pe_industry_median':pe.get('industry_median'), 'pb':(valuation_metrics.get('pb') or {}).get('value'),
+        'ps':(valuation_metrics.get('ps') or {}).get('value'),
+    }
+    quality_raw = {
+        'report_period':financial.get('period'),
+        'revenue_yoy':(financial_indicators.get('operating_revenue') or {}).get('yoy'),
+        'net_profit_yoy':(financial_indicators.get('net_profit') or {}).get('yoy'),
+        'roe':(financial_indicators.get('roe') or {}).get('value'),
+        'net_profit_margin':(financial_indicators.get('net_profit_margin') or {}).get('value'),
+        'total_assets':(financial_indicators.get('total_assets') or {}).get('value'),
+        'total_debts':(financial_indicators.get('total_debts') or {}).get('value'),
+    }
+    expectation_raw = {
+        'eps_forecast':forecast.get('latest'), 'eps_revision_30d_pct':forecast.get('revision_30d_pct'),
+        'recommendation':ratings.get('recommendation'), 'target_price':ratings.get('target_price'),
+        'target_upside_pct':round((as_float(ratings.get('target_price')) / closes[-1] - 1) * 100, 2) if as_float(ratings.get('target_price')) > 0 else None,
+        'coverage_count':ratings.get('coverage_count'), 'rating_distribution':ratings.get('ratings'),
+    }
+    factor_weights = {'momentum':.25, 'value':.20, 'quality':.25, 'low_volatility':.15, 'expectation_revision':.15}
+    available_map = {'momentum':True, 'value':value_available, 'quality':quality_available, 'low_volatility':True, 'expectation_revision':expectation_available}
+    coverage = sum(factor_weights[key] for key, available in available_map.items() if available)
+    missing = [key for key, available in available_map.items() if not available]
+    warnings = ['当前没有合格横截面，因此不生成伪造的百分位或Z分数']
+    if missing:
+        warnings.append('研究证据仍缺失：' + '、'.join(missing))
+    if research.get('errors'):
+        warnings.append('Longbridge部分研究接口不可用：' + '、'.join(sorted(research['errors'])))
+    reason = '覆盖率低于70%，且模型仍处于shadow，不能影响最终持仓建议' if coverage < .70 else '研究覆盖率已提高，但缺乏横截面标准化与回测验收，影子模型仍不得影响最终建议'
     return {
         'symbol':normalized_symbol(symbol), 'model_version':'multifactor-v1.0.0', 'model_status':'shadow', 'snapshot_date':history.get('as_of'),
         'universe':{'market':market, 'name':'.SPX.US' if market == 'US' else 'HSI/HSTECH', 'size':None, 'status':'cross_section_pending'},
         'factors':{
             'momentum':{'research_weight':.25, 'available':True, 'raw':momentum_raw, 'z_score':None, 'percentile':None, 'contribution':0},
-            'value':{'research_weight':.20, 'available':False, 'raw':{}, 'z_score':None, 'percentile':None, 'contribution':0},
-            'quality':{'research_weight':.25, 'available':False, 'raw':{}, 'z_score':None, 'percentile':None, 'contribution':0},
+            'value':{'research_weight':.20, 'available':value_available, 'raw':value_raw, 'z_score':None, 'percentile':None, 'contribution':0},
+            'quality':{'research_weight':.25, 'available':quality_available, 'raw':quality_raw, 'z_score':None, 'percentile':None, 'contribution':0},
             'low_volatility':{'research_weight':.15, 'available':True, 'raw':low_vol_raw, 'z_score':None, 'percentile':None, 'contribution':0},
-            'expectation_revision':{'research_weight':.15, 'available':False, 'raw':{}, 'z_score':None, 'percentile':None, 'contribution':0},
+            'expectation_revision':{'research_weight':.15, 'available':expectation_available, 'raw':expectation_raw, 'z_score':None, 'percentile':None, 'contribution':0},
         },
-        'composite':{'signal':'neutral', 'technical_observation':'positive' if positive_trend else 'negative' if negative_trend else 'mixed', 'signal_percentile':None, 'confidence':round(coverage*.5, 2), 'data_coverage':coverage, 'decision_weight':0, 'reason':'覆盖率低于70%，且模型仍处于shadow，不能影响最终持仓建议'},
+        'composite':{'signal':'neutral', 'technical_observation':'positive' if positive_trend else 'negative' if negative_trend else 'mixed', 'signal_percentile':None, 'confidence':round(coverage*.5, 2), 'data_coverage':coverage, 'decision_weight':0, 'reason':reason},
         'flow_overlay':{'available':False, 'score_effect':0}, 'price_plan':deterministic_price_plan(technical),
-        'quality':{'missing_fields':['valuation','quality_financials','analyst_expectation_revision'], 'stale_fields':[], 'warnings':warnings},
-        'source':history.get('source', 'public_history_fallback'), 'fetched_at':iso_now(),
+        'quality':{'missing_fields':missing, 'stale_fields':[], 'warnings':warnings},
+        'source':history.get('source', 'public_history_fallback') + '+longbridge_research', 'fetched_at':iso_now(),
     }
 
 def build_discovery_recommendation(meta, history, sector_weight=0.0):
@@ -1648,6 +1845,9 @@ def build_risk_flags(body):
         flags.append(f"{nearest.get('date')} 临近事件：{nearest.get('title')}，禁止仅凭技术信号加仓")
     if body.get('event_data_complete') is False:
         flags.append('财报事件日历暂不可用，事件风险覆盖不完整')
+    research = body.get('research_snapshot') or {}
+    if research and as_float(research.get('coverage_pct')) < 75:
+        flags.append(f"基本面与一致预期覆盖仅 {as_float(research.get('coverage_pct')):.0f}%，研究证据不足，不允许据此提高评级")
     if as_float(body.get('return_pct')) <= -30:
         flags.append('当前回撤超过 30%，禁止仅因价格下跌而机械补仓')
     if as_float(body.get('cost')) <= 0:
@@ -1695,7 +1895,7 @@ def health():
         'quote_sdk_path':quote_sdk_path,
         'runtime':{'python':platform.python_version(), 'implementation':platform.python_implementation(), 'machine':platform.machine(), 'libc':platform.libc_ver(), 'executable':sys.executable},
         'account_configured':configured, 'session_configured':session_configured(),
-        'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/events', '/investment-policy', '/market', '/portfolio-risk', '/factor-analysis', '/analysis'],
+        'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/events', '/research', '/investment-policy', '/market', '/portfolio-risk', '/factor-analysis', '/analysis'],
     })
 
 @app.route('/session', methods=['POST', 'OPTIONS'])
@@ -1765,9 +1965,22 @@ def factor_analysis():
         return jsonify({'error':'缺少symbol参数', 'source':'factor_model', 'retryable':False, 'fetched_at':iso_now()}), 400
     try:
         history_data = fetch_symbol_history(symbol, force=request.args.get('force') == '1')
-        return jsonify(factor_analysis_from_history(symbol, history_data))
+        research_data = get_research_snapshot(symbol, force=request.args.get('force') == '1')
+        return jsonify(factor_analysis_from_history(symbol, history_data, research=research_data))
     except Exception as exc:
         return jsonify({'error':'因子影子分析失败', 'detail':str(exc), 'symbol':symbol, 'source':'factor_model', 'retryable':True, 'fetched_at':iso_now()}), 503
+
+@app.route('/research')
+def research():
+    if not request_authorized():
+        return auth_error()
+    symbol = normalized_symbol(request.args.get('symbol'))
+    if not symbol:
+        return jsonify({'error':'缺少symbol参数'}), 400
+    try:
+        return jsonify(get_research_snapshot(symbol, force=request.args.get('force') == '1'))
+    except Exception as exc:
+        return jsonify({'error':'Longbridge研究数据获取失败', 'detail':str(exc), 'symbol':symbol, 'retryable':True, 'fetched_at':iso_now()}), 503
 
 @app.route('/events')
 def events():
@@ -1899,6 +2112,7 @@ def analysis():
     except Exception as exc:
         return jsonify({'error':'真实历史行情不可用，已阻断个股分析', 'detail':str(exc), 'symbol':symbol}), 503
     event_data = get_upcoming_finance_events([symbol])
+    research_data = get_research_snapshot(symbol, force=bool(body.get('force')))
     body.update({
         'symbol':position['symbol'], 'name':position['name'], 'ccy':position['currency'],
         'cost':position['cost_price'], 'price':position['price'], 'qty':position['quantity'],
@@ -1906,10 +2120,11 @@ def analysis():
         'sector':position['sector'], 'portfolio_context':live_position_context(snapshot, position),
         'price_updated_at':snapshot['fetched_at'], 'account_verified':True,
         'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'], 'history_source_status':history_data.get('source_status'),
+        'research_snapshot':research_data,
         'upcoming_events':event_data.get('events', []), 'event_data_complete':event_data.get('complete', False),
         'event_data_source':event_data.get('source'),
     })
-    factor_result = factor_analysis_from_history(symbol, history_data)
+    factor_result = factor_analysis_from_history(symbol, history_data, research=research_data)
     try:
         market_result = get_market_regime()
     except Exception as exc:
@@ -1921,10 +2136,13 @@ def analysis():
     risk_flags = build_risk_flags(body)
     result = fallback_analysis(body, risk_flags)
     result.update(factor_result['price_plan'])
+    evidence = research_evidence(research_data, position['price'])
+    result['bull_case'] = list(dict.fromkeys(result['bull_case'] + evidence['bull']))[:4]
+    result['bear_case'] = list(dict.fromkeys(result['bear_case'] + evidence['bear']))[:4]
     narrative = {
         'executive_summary':result['executive_summary'], 'bull_case':result['bull_case'], 'bear_case':result['bear_case'],
         'counterarguments':[], 'invalidation_conditions':result['invalidation_conditions'],
-        'data_limitations':factor_result['quality']['warnings'], 'change_explanation':result['change_reason'],
+        'data_limitations':list(dict.fromkeys(factor_result['quality']['warnings'] + evidence['limitations'])), 'change_explanation':result['change_reason'],
     }
     key = os.getenv('DEEPSEEK_API_KEY', '')
     if key:
@@ -1960,6 +2178,9 @@ def analysis():
             result['source'] = 'deterministic_policy_engine+deepseek_narrative'
         except Exception:
             result['source'] = 'deterministic_policy_engine+narrative_fallback'
+    narrative['bull_case'] = list(dict.fromkeys(evidence['bull'] + narrative['bull_case']))[:4]
+    narrative['bear_case'] = list(dict.fromkeys(evidence['bear'] + narrative['bear_case']))[:4]
+    narrative['data_limitations'] = list(dict.fromkeys(evidence['limitations'] + narrative['data_limitations']))[:6]
     result = validate_decision(result, body, risk_flags)
     policy = investment_policy()
     if not policy.get('confirmed_by_user'):
@@ -1974,6 +2195,7 @@ def analysis():
         'price_source':snapshot.get('price_source'), 'price_source_status':snapshot.get('price_source_status'),
         'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'], 'history_source_status':history_data.get('source_status'),
         'factor_analysis':factor_result, 'market_regime':market_result, 'portfolio_risk':portfolio_risk_result, 'narrative':narrative,
+        'research_snapshot':research_data,
         'upcoming_events':event_data.get('events', []), 'event_data_complete':event_data.get('complete', False),
         'audit':{'data_snapshot_id':portfolio_risk_result.get('snapshot_id'), 'factor_model_version':factor_result['model_version'], 'factor_model_status':factor_result['model_status'], 'risk_model_version':portfolio_risk_result.get('model_version'), 'policy_version':policy['version'], 'consistency':result.get('consistency', {}).get('status')},
         'generated_at': iso_now(),
