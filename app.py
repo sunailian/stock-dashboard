@@ -158,6 +158,14 @@ def validate_decision(result, body, risk_flags):
     previous = body.get('previous_decision') or {}
     previous_rating = str(previous.get('rating', ''))
     changed = previous_rating in RATINGS and previous_rating != final_rating
+    previous_price = as_float(previous.get('price'))
+    price_changed = previous_price > 0 and abs(price - previous_price) / previous_price >= 0.01
+    previous_context = previous.get('portfolio_context') or {}
+    exposure_changed = any(
+        abs(as_float(context.get(key)) - as_float(previous_context.get(key))) >= 0.01
+        for key in ('position_weight', 'sector_weight', 'company_weight')
+    ) if previous_context else False
+    material_change = price_changed or exposure_changed
     valid_new_evidence = [
         item for item in chinese_list(result.get('new_evidence'), [])
         if any(keyword in item for keyword in EVIDENCE_KEYWORDS)
@@ -165,11 +173,11 @@ def validate_decision(result, body, risk_flags):
     result['new_evidence'] = valid_new_evidence
     if changed and concentrated:
         result['change_reason'] = '组合集中度已达到硬风控阈值，本次方向变化由仓位风险约束触发。'
-    elif changed and not valid_new_evidence:
-        violations.append('建议发生变化，但没有基于已提供数据的新证据')
+    elif changed and (not valid_new_evidence or not material_change):
+        violations.append('建议发生变化，但价格或组合敞口没有达到可验证的变化阈值')
         final_rating = 'Hold'
         adjustments.append('建议已降级为持有，等待可验证的新证据')
-        result['change_reason'] = '本次建议与上次不同，但缺少可验证的新证据，因此暂不执行方向变化。'
+        result['change_reason'] = '本次建议与上次不同，但价格变化不足1%且组合敞口未明显改变，因此暂不执行方向变化。'
     elif changed:
         result['change_reason'] = result.get('change_reason') or '建议因新的价格或组合风险证据发生变化。'
     elif previous_rating in RATINGS:
@@ -197,6 +205,37 @@ def validate_decision(result, body, risk_flags):
     else:
         result['confidence'] = min(model_confidence, 70)
         result['confidence_basis'] = f'历史有效样本仅 {sample_size} 个，置信度暂按模型值封顶 70%'
+
+    current_weight = max(0.0, as_float(context.get('position_weight')))
+    if final_rating == 'Buy':
+        target_weight = min(0.18, current_weight + 0.03)
+    elif final_rating == 'Overweight':
+        target_weight = min(0.18, current_weight + 0.02)
+    elif final_rating == 'Underweight':
+        target_weight = max(0.0, current_weight - 0.04)
+    elif final_rating == 'Sell':
+        target_weight = 0.0
+    else:
+        target_weight = current_weight
+    result['current_position_pct'] = round(current_weight * 100, 1)
+    result['target_position_pct'] = round(target_weight * 100, 1)
+    result['expected_upside_pct'] = round((as_float(result.get('price_target')) / price - 1) * 100, 1)
+    downside = max(0.01, (price - as_float(result.get('stop_loss'))) / price)
+    upside = max(0.0, (as_float(result.get('price_target')) - price) / price)
+    result['risk_reward_ratio'] = round(upside / downside, 2) if final_rating in {'Buy', 'Overweight', 'Hold'} else None
+    if final_rating in {'Buy', 'Overweight'}:
+        result['position_sizing'] = f'当前仓位约 {current_weight*100:.1f}%，建议仅在入场价附近分批提高至 {target_weight*100:.1f}%，不得一次性追高。'
+        result['action_steps'] = ['等待价格进入建议入场区间', '分两批完成目标仓位', '跌破止损价停止加仓并重新评估']
+    elif final_rating == 'Underweight':
+        result['position_sizing'] = f'当前仓位约 {current_weight*100:.1f}%，建议分批降低至 {target_weight*100:.1f}%，优先收敛组合风险。'
+        result['action_steps'] = ['先降低四分之一至二分之一仓位', '反弹接近目标价时继续减仓', '若风险继续扩大则提前复核']
+    elif final_rating == 'Sell':
+        result['position_sizing'] = f'当前仓位约 {current_weight*100:.1f}%，目标仓位为 0%，建议按流动性分批退出。'
+        result['action_steps'] = ['停止新增资金', '按计划分批退出', '退出后继续记录价格以验证卖出判断']
+    else:
+        result['position_sizing'] = f'当前仓位约 {current_weight*100:.1f}%，目标维持 {target_weight*100:.1f}%；未出现新证据前不主动改变方向。'
+        result['action_steps'] = ['维持现有仓位', '不因短期波动追涨杀跌', '触发目标价、止损价或敞口变化后复核']
+    result['review_trigger'] = '价格较本次分析变化1%、触及止损/目标价，或单股/同公司敞口变化1个百分点时重新分析。'
 
     result['consistency'] = {
         'status': 'adjusted' if violations else 'passed',
@@ -238,7 +277,7 @@ def no_cache(response):
 
 @app.route('/health')
 def health():
-    return jsonify({'status': 'ok', 'routes': ['/health', '/prices', '/ai', '/analysis']})
+    return jsonify({'status': 'ok', 'routes': ['/health', '/prices', '/analysis']})
 
 @app.route('/prices')
 def prices():
@@ -308,26 +347,6 @@ JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
     })
     return jsonify(result)
-
-@app.route('/ai', methods=['POST'])
-def ai():
-    try:
-        body = request.get_json(force=True, silent=True) or {}
-    except:
-        body = {}
-    key = os.getenv('DEEPSEEK_API_KEY', '')
-    if not key:
-        return jsonify({'error': 'DEEPSEEK_API_KEY not set'}), 503
-    symbol = body.get('symbol', 'UNKNOWN')
-    prompt = f"你是灼沅的股票分析师。灼沅年化目标20%。请对{symbol}给出50字以内操作建议，用【持有】【加仓】【减仓】【止损】结尾。"
-    req = urllib.request.Request('https://api.deepseek.com/v1/chat/completions',
-        data=json.dumps({'model': 'deepseek-chat', 'messages': [{'role': 'user', 'content': prompt}],
-        'max_tokens': 150, 'temperature': 0.6}).encode(),
-        method='POST', headers={'Content-Type': 'application/json',
-        'Authorization': f'Bearer {key}'})
-    resp = json.loads(urllib.request.urlopen(req, timeout=30, context=CTX).read())
-    result = resp['choices'][0]['message']['content'] if resp.get('choices') else ''
-    return jsonify({'analysis': result, 'symbol': symbol})
 
 if __name__ == '__main__':
     port = int(os.environ.get('FC_SERVER_PORT', 9000))

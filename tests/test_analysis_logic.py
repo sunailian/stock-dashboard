@@ -62,7 +62,7 @@ class DecisionAuditTests(unittest.TestCase):
             'change_reason': '趋势改变。', 'new_evidence': [],
         }, body)
         self.assertEqual(result['rating'], 'Hold')
-        self.assertTrue(any('没有基于' in item for item in result['consistency']['violations']))
+        self.assertTrue(any('变化阈值' in item for item in result['consistency']['violations']))
 
     def test_valid_new_evidence_allows_change(self):
         body = dict(self.body, previous_decision={'rating': 'Buy', 'price': 99, 'generated_at': '2026-07-31T00:00:00Z'})
@@ -71,6 +71,8 @@ class DecisionAuditTests(unittest.TestCase):
             'change_reason': '当前回撤扩大。', 'new_evidence': ['当前价格跌破成本且回撤扩大'],
         }, body)
         self.assertEqual(result['rating'], 'Underweight')
+        self.assertEqual(result['target_position_pct'], 6.0)
+        self.assertEqual(len(result['action_steps']), 3)
 
     def test_concentration_gate_preserves_original_rating_in_audit(self):
         body = dict(self.body, portfolio_context={'position_weight': 0.19, 'company_weight': 0.21})
@@ -88,6 +90,14 @@ class DecisionAuditTests(unittest.TestCase):
             'position_sizing': '维持仓位。',
         }, body)
         self.assertEqual(result['confidence'], 60)
+
+    def test_reduction_never_increases_target_position(self):
+        body = dict(self.body, portfolio_context={'position_weight': 0.02, 'company_weight': 0.02})
+        result = self.run_decision({
+            'rating': 'Underweight', 'executive_summary': '建议减仓。', 'position_sizing': '建议减仓。',
+        }, body)
+        self.assertEqual(result['target_position_pct'], 0.0)
+        self.assertIsNone(result['risk_reward_ratio'])
 
 
 if __name__ == '__main__':
