@@ -324,6 +324,7 @@ def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetc
             total_cash_cny += amount * fx[currency]
     missing_prices = [item['symbol'] for item in positions if item['price'] is None]
     missing_fx = [item['currency'] for item in positions if item['fx_to_cny'] is None]
+    primary_balance = balances[0] if len(balances) == 1 else None
     errors = source_errors or {}
     return {
         'source':'longbridge_openapi', 'fetched_at':fetched_at or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
@@ -331,6 +332,10 @@ def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetc
         'account':{
             'net_assets_cny':round(net_assets_cny, 2), 'total_cash_cny':round(total_cash_cny, 2),
             'buy_power_cny':round(buy_power_cny, 2), 'cash_by_currency':cash_by_currency,
+            'account_currency':str(primary_balance.get('currency') or '').upper() if primary_balance else 'CNY',
+            'net_assets_native':as_float(primary_balance.get('net_assets')) if primary_balance else round(net_assets_cny, 2),
+            'total_cash_native':as_float(primary_balance.get('total_cash')) if primary_balance else round(total_cash_cny, 2),
+            'buy_power_native':as_float(primary_balance.get('buy_power')) if primary_balance else round(buy_power_cny, 2),
             'balances':balances,
         },
         'complete':not (missing_prices or missing_fx or missing_conversion or errors),

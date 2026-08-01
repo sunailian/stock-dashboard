@@ -233,7 +233,7 @@ if(sessionToken)document.getElementById('auth-overlay').style.display='none';
 
   <!-- CENTER HERO -->
   <div id="hero">
-    <div class="kpi-label">总净资产 · NET ASSETS (CNY)</div>
+    <div class="kpi-label" id="hero-label">总净资产 · NET ASSETS</div>
     <div class="kpi" id="hero-kpi">账户同步中</div>
     <div class="progress-wrap"><div class="progress-bar" id="hero-bar"></div></div>
     <div class="progress-label">年化目标 20% ｜ 当前 <span id="hero-pct">+36.2%</span></div>
@@ -282,6 +282,7 @@ if(sessionToken)document.getElementById('auth-overlay').style.display='none';
 let FX={CNY:1};
 const portfolio={
   netAssets:0,cash:0,buyPower:0,cashUSD:0,cashHKD:0,totalReturn:0,annualTarget:20,
+  netAssetsNative:0,accountCurrency:'CNY',
   usPositions:[],hkPositions:[]
 };
 
@@ -380,8 +381,15 @@ const LEGACY_DECISION_LOG_KEY='zhuoyuan_decision_log_v1';
 const ANALYSIS_CACHE_KEY='zhuoyuan_analysis_cache_v4_live_account';
 const PRICE_HISTORY_KEY='zhuoyuan_price_history_v1';
 const DISCOVERY_CACHE_KEY='zhuoyuan_discovery_cache_v1';
-function nativeCurrency(ccy){return ccy==='USD'?'$':'HK$'}
+function nativeCurrency(ccy){return ccy==='USD'?'$':ccy==='CNY'?'¥':'HK$'}
 function formatNativePrice(value,ccy){return Number.isFinite(Number(value))&&Number(value)>0?nativeCurrency(ccy)+Number(value).toFixed(2):'--'}
+function renderNetAssets(){
+  const currency=portfolio.accountCurrency||'CNY',symbol=nativeCurrency(currency),native=Number(portfolio.netAssetsNative)||0;
+  const converted=currency==='CNY'?'':` ｜ 人民币折算 ¥${Math.round(portfolio.netAssets).toLocaleString()}`;
+  document.getElementById('hero-label').textContent=`总净资产 · NET ASSETS (${currency}，App口径)${converted}`;
+  document.getElementById('hero-kpi').textContent=symbol+' '+native.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('hero-kpi').title=currency==='CNY'?'':`人民币折算约 ¥ ${Math.round(portfolio.netAssets).toLocaleString()}`;
+}
 function escapeHTML(value){return String(value).replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
 function readStorage(key,fallback){try{return JSON.parse(localStorage.getItem(key))||fallback}catch{return fallback}}
 function getDecisionLog(){
@@ -673,7 +681,7 @@ function initAll(prices,updated=''){
   document.getElementById('live-label').textContent='LIVE '+priceTime;
   // Update hero numbers
   document.getElementById('hero-pct').textContent=portfolio.totalReturn.toFixed(1)+'%';
-  document.getElementById('hero-kpi').textContent='¥ '+Math.round(portfolio.netAssets).toLocaleString();
+  renderNetAssets();
   document.getElementById('hero-bar').style.width=Math.min(Math.abs(portfolio.totalReturn),100)+'%';
 }
 
@@ -681,6 +689,7 @@ function applyAccountSnapshot(data){
   FX={CNY:1,...data.fx_to_cny};
   const account=data.account||{},cash=account.cash_by_currency||{};
   portfolio.netAssets=Number(account.net_assets_cny)||0;portfolio.cash=Number(account.total_cash_cny)||0;portfolio.buyPower=Number(account.buy_power_cny)||0;
+  portfolio.netAssetsNative=Number(account.net_assets_native)||portfolio.netAssets;portfolio.accountCurrency=account.account_currency||'CNY';
   portfolio.cashUSD=Number(cash.USD)||0;portfolio.cashHKD=Number(cash.HKD)||0;
   const positions=(data.positions||[]).map(item=>({sym:item.symbol,name:item.name,qty:Number(item.quantity),availableQty:Number(item.available_quantity),cost:Number(item.cost_price),ccy:item.currency,sector:item.sector,accountChannels:item.account_channels||[]}));
   portfolio.usPositions=positions.filter(p=>!p.sym.endsWith('.HK'));portfolio.hkPositions=positions.filter(p=>p.sym.endsWith('.HK'));

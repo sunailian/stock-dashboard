@@ -180,6 +180,8 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertEqual(snapshot['account']['net_assets_cny'],7000)
         self.assertEqual(snapshot['account']['total_cash_cny'],700)
         self.assertEqual(snapshot['positions'][0]['market_value_cny'],1680)
+        self.assertEqual(snapshot['account']['account_currency'],'USD')
+        self.assertEqual(snapshot['account']['net_assets_native'],1000)
 
     def test_account_snapshot_keeps_positions_when_optional_source_fails(self):
         stock_data = {'list':[{'account_channel':'cash','stock_info':[{'symbol':'AAPL.US','symbol_name':'Apple','quantity':'3','available_quantity':'3','currency':'USD','cost_price':'150','market':'US'}]}]}
