@@ -2097,6 +2097,7 @@ def analysis():
     if not request_authorized():
         return auth_error()
     body = request.get_json(force=True, silent=True) or {}
+    force_refresh = bool(body.get('force'))
     try:
         snapshot = get_account_snapshot(force=True)
     except Exception as exc:
@@ -2108,11 +2109,11 @@ def analysis():
     if not position:
         return jsonify({'error':'该标的不在实时持仓中，不能生成持仓操作建议', 'symbol':symbol}), 409
     try:
-        history_data = fetch_symbol_history(symbol, force=True)
+        history_data = fetch_symbol_history(symbol, force=force_refresh)
     except Exception as exc:
         return jsonify({'error':'真实历史行情不可用，已阻断个股分析', 'detail':str(exc), 'symbol':symbol}), 503
-    event_data = get_upcoming_finance_events([symbol])
-    research_data = get_research_snapshot(symbol, force=bool(body.get('force')))
+    event_data = get_upcoming_finance_events([symbol], force=force_refresh)
+    research_data = get_research_snapshot(symbol, force=force_refresh)
     body.update({
         'symbol':position['symbol'], 'name':position['name'], 'ccy':position['currency'],
         'cost':position['cost_price'], 'price':position['price'], 'qty':position['quantity'],
@@ -2126,11 +2127,11 @@ def analysis():
     })
     factor_result = factor_analysis_from_history(symbol, history_data, research=research_data)
     try:
-        market_result = get_market_regime()
+        market_result = get_market_regime(force=force_refresh)
     except Exception as exc:
         market_result = {'model_version':'market-regime-v1', 'model_status':'shadow', 'error':str(exc)}
     try:
-        portfolio_risk_result = get_portfolio_risk(snapshot=snapshot)
+        portfolio_risk_result = get_portfolio_risk(force=force_refresh, snapshot=snapshot)
     except Exception as exc:
         portfolio_risk_result = {'model_version':'portfolio-risk-v1', 'model_status':'shadow', 'error':str(exc), 'snapshot_id':None}
     risk_flags = build_risk_flags(body)
