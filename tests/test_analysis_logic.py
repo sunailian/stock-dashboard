@@ -1,4 +1,6 @@
 import ast
+import math
+import statistics
 import unittest
 from pathlib import Path
 
@@ -9,6 +11,8 @@ def load_logic():
     names = {
         'as_float', 'has_chinese', 'chinese_list', 'fallback_analysis',
         'normalize_analysis', 'build_risk_flags', 'validate_decision',
+        'clamp', 'normalized_symbol', 'score_discovery_candidate',
+        'build_discovery_recommendation',
     }
     module = ast.Module(
         body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names],
@@ -18,6 +22,8 @@ def load_logic():
         'RATINGS': {'Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'},
         'RATING_SCORE': {'Sell': -2, 'Underweight': -1, 'Hold': 0, 'Overweight': 1, 'Buy': 2},
         'EVIDENCE_KEYWORDS': ('价格', '收益', '仓位', '敞口', '集中', '回撤', '成本', '现金', '风险'),
+        'math': math,
+        'statistics': statistics,
     }
     exec(compile(module, 'app.py', 'exec'), namespace)
     return namespace
@@ -98,6 +104,30 @@ class DecisionAuditTests(unittest.TestCase):
         }, body)
         self.assertEqual(result['target_position_pct'], 0.0)
         self.assertIsNone(result['risk_reward_ratio'])
+
+    def test_hk_symbols_are_normalized_for_exclusion(self):
+        normalize = self.logic['normalized_symbol']
+        self.assertEqual(normalize('700.HK'), '0700.HK')
+        self.assertEqual(normalize('META.US'), 'META')
+
+    def test_discovery_score_rewards_missing_sector(self):
+        closes = [100 + index * .35 + math.sin(index / 5) for index in range(252)]
+        score = self.logic['score_discovery_candidate']
+        missing = score(closes, 0)
+        crowded = score(closes, .30)
+        self.assertTrue(missing['eligible'])
+        self.assertEqual(missing['score'] - crowded['score'], 15)
+
+    def test_discovery_recommendation_has_bounded_weight_and_price_risk(self):
+        closes = [80 + index * .25 + math.sin(index / 7) for index in range(252)]
+        history = {'dates':[f'day-{index}' for index in range(252)], 'closes':closes, 'as_of':'2026-07-31', 'source':'test'}
+        meta = {'symbol':'TEST', 'name':'测试公司', 'ccy':'USD', 'sector':'医疗健康', 'group':'TEST'}
+        result = self.logic['build_discovery_recommendation'](meta, history, 0)
+        self.assertIsNotNone(result)
+        self.assertLess(result['stop_loss'], result['entry_price'])
+        self.assertGreater(result['price_target'], result['price'])
+        self.assertLessEqual(result['target_position_pct'], 5)
+        self.assertEqual(len(result['history']), 120)
 
 
 if __name__ == '__main__':

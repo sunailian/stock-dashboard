@@ -1,5 +1,6 @@
-"""股票看板 API — 行情代理 + AI 分析。环境变量：DEEPSEEK_API_KEY"""
-import json, os, urllib.request, ssl, time
+"""股票看板 API — 行情代理、组合外标的筛选与 AI 分析。"""
+import json, os, urllib.request, ssl, time, math, statistics
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -12,11 +13,141 @@ RATINGS = {'Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'}
 RATING_SCORE = {'Sell': -2, 'Underweight': -1, 'Hold': 0, 'Overweight': 1, 'Buy': 2}
 EVIDENCE_KEYWORDS = ('价格', '收益', '仓位', '敞口', '集中', '回撤', '成本', '现金', '风险')
 
+# 候选池只是研究范围，不代表预设推荐。最终顺序每天由真实日线指标和组合互补性计算。
+DISCOVERY_UNIVERSE = (
+    {'symbol':'META', 'provider_symbol':'usMETA.OQ', 'name':'Meta Platforms', 'ccy':'USD', 'sector':'通信服务', 'group':'META'},
+    {'symbol':'AMZN', 'provider_symbol':'usAMZN.OQ', 'name':'Amazon', 'ccy':'USD', 'sector':'可选消费', 'group':'AMAZON'},
+    {'symbol':'JPM', 'provider_symbol':'usJPM.N', 'name':'JPMorgan Chase', 'ccy':'USD', 'sector':'金融', 'group':'JPM'},
+    {'symbol':'V', 'provider_symbol':'usV.N', 'name':'Visa', 'ccy':'USD', 'sector':'金融', 'group':'VISA'},
+    {'symbol':'XOM', 'provider_symbol':'usXOM.N', 'name':'Exxon Mobil', 'ccy':'USD', 'sector':'能源', 'group':'XOM'},
+    {'symbol':'LLY', 'provider_symbol':'usLLY.N', 'name':'Eli Lilly', 'ccy':'USD', 'sector':'医疗健康', 'group':'LLY'},
+    {'symbol':'COST', 'provider_symbol':'usCOST.OQ', 'name':'Costco', 'ccy':'USD', 'sector':'必选消费', 'group':'COST'},
+    {'symbol':'CAT', 'provider_symbol':'usCAT.N', 'name':'Caterpillar', 'ccy':'USD', 'sector':'工业', 'group':'CAT'},
+    {'symbol':'NEE', 'provider_symbol':'usNEE.N', 'name':'NextEra Energy', 'ccy':'USD', 'sector':'公用事业', 'group':'NEE'},
+    {'symbol':'AVGO', 'provider_symbol':'usAVGO.OQ', 'name':'Broadcom', 'ccy':'USD', 'sector':'半导体', 'group':'AVGO'},
+    {'symbol':'0700.HK', 'provider_symbol':'hk00700', 'name':'腾讯控股', 'ccy':'HKD', 'sector':'通信服务', 'group':'TENCENT'},
+    {'symbol':'1299.HK', 'provider_symbol':'hk01299', 'name':'友邦保险', 'ccy':'HKD', 'sector':'金融', 'group':'AIA'},
+    {'symbol':'0005.HK', 'provider_symbol':'hk00005', 'name':'汇丰控股', 'ccy':'HKD', 'sector':'金融', 'group':'HSBC'},
+    {'symbol':'0883.HK', 'provider_symbol':'hk00883', 'name':'中国海洋石油', 'ccy':'HKD', 'sector':'能源', 'group':'CNOOC'},
+    {'symbol':'0669.HK', 'provider_symbol':'hk00669', 'name':'创科实业', 'ccy':'HKD', 'sector':'工业', 'group':'TTI'},
+    {'symbol':'2020.HK', 'provider_symbol':'hk02020', 'name':'安踏体育', 'ccy':'HKD', 'sector':'可选消费', 'group':'ANTA'},
+    {'symbol':'0388.HK', 'provider_symbol':'hk00388', 'name':'香港交易所', 'ccy':'HKD', 'sector':'金融', 'group':'HKEX'},
+    {'symbol':'2318.HK', 'provider_symbol':'hk02318', 'name':'中国平安', 'ccy':'HKD', 'sector':'金融', 'group':'PINGAN'},
+)
+DISCOVERY_ALIASES = {'BABA':'ALIBABA', '9988.HK':'ALIBABA'}
+DISCOVERY_MARKET_CACHE = {'saved_at': 0, 'items': {}}
+
 def as_float(value, default=0.0):
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+def clamp(value, low, high):
+    return max(low, min(high, value))
+
+def normalized_symbol(symbol):
+    value = str(symbol or '').upper().strip()
+    if value.endswith('.US'):
+        value = value[:-3]
+    if value.endswith('.HK'):
+        value = value[:-3].zfill(4) + '.HK'
+    return value
+
+def score_discovery_candidate(closes, sector_weight=0.0):
+    """Return an auditable 0-100 score from trend, momentum, risk and diversification."""
+    clean = [as_float(value) for value in closes if as_float(value) > 0]
+    if len(clean) < 205:
+        return None
+    price = clean[-1]
+    momentum = lambda days: price / clean[-days-1] - 1
+    mom20, mom60, mom120 = momentum(20), momentum(60), momentum(120)
+    sma20 = statistics.fmean(clean[-20:])
+    sma50 = statistics.fmean(clean[-50:])
+    sma200 = statistics.fmean(clean[-200:])
+    daily_returns = [math.log(clean[i] / clean[i-1]) for i in range(len(clean)-20, len(clean))]
+    volatility = statistics.pstdev(daily_returns) * math.sqrt(252)
+    drawdown = price / max(clean[-120:]) - 1
+    diversification = 15 if sector_weight < .01 else 10 if sector_weight < .08 else 5 if sector_weight < .15 else 0
+    score = (
+        clamp((mom20 + .10) / .20, 0, 1) * 10
+        + clamp((mom60 + .05) / .30, 0, 1) * 20
+        + clamp((mom120 + .05) / .45, 0, 1) * 20
+        + (10 if price > sma50 else 0)
+        + (15 if price > sma200 else 0)
+        + clamp((.65 - volatility) / .45, 0, 1) * 10
+        + clamp((drawdown + .30) / .30, 0, 1) * 10
+        + diversification
+    )
+    return {
+        'score': round(clamp(score, 0, 100)), 'price': price,
+        'momentum_20d': mom20, 'momentum_60d': mom60, 'momentum_120d': mom120,
+        'sma20': sma20, 'sma50': sma50, 'sma200': sma200,
+        'volatility_20d': volatility, 'drawdown_120d': drawdown,
+        'sector_weight': max(0.0, sector_weight), 'diversification_score': diversification,
+        'eligible': price > sma200 and mom60 > 0 and drawdown > -.30 and volatility < .65,
+    }
+
+def build_discovery_recommendation(meta, history, sector_weight=0.0):
+    metrics = score_discovery_candidate(history.get('closes', []), sector_weight)
+    if not metrics or not metrics['eligible']:
+        return None
+    price, vol = metrics['price'], metrics['volatility_20d']
+    entry = min(price, max(metrics['sma20'], metrics['sma50']))
+    risk_pct = clamp(vol * .25, .07, .14)
+    stop = min(entry * (1 - risk_pct), metrics['sma50'] * .97)
+    target = max(price * 1.08, entry + 2 * (entry - stop))
+    target_weight = 5.0 if sector_weight < .01 and vol < .30 else 4.0 if vol < .40 else 2.5
+    public_meta = {key: value for key, value in meta.items() if key != 'provider_symbol'}
+    return {
+        **public_meta, **metrics, 'price': round(price, 2),
+        'entry_price': round(entry, 2), 'stop_loss': round(stop, 2),
+        'price_target': round(target, 2), 'target_position_pct': target_weight,
+        'expected_upside_pct': round((target / price - 1) * 100, 1),
+        'risk_reward_ratio': round((target - entry) / max(.01, entry - stop), 2),
+        'summary': f"该标的未在当前持仓中；量化评分 {metrics['score']} 分，优先用于补充{meta['sector']}暴露。等待进入建议区间后再分批评估，不追涨。",
+        'bull_case': [
+            f"60日动量 {metrics['momentum_60d']*100:+.1f}%，且价格位于200日均线上方。",
+            f"当前组合该行业权重约 {sector_weight*100:.1f}%，行业互补得分 {metrics['diversification_score']}/15。",
+        ],
+        'bear_case': [
+            f"20日年化波动约 {vol*100:.1f}%，建议仓位必须受限。",
+            f"较120日高点回撤 {metrics['drawdown_120d']*100:.1f}%，趋势失效时不得补仓摊低成本。",
+        ],
+        'position_sizing': f"当前未持有；若价格进入建议区间，可分两批建立不超过组合 {target_weight:.1f}% 的观察仓。",
+        'action_steps': ['等待价格进入建议区间', '首批只建立目标仓位的一半', '跌破止损价退出并记录验证结果'],
+        'invalidation_conditions': ['日线跌破200日均线', '60日动量转负', '跌破风险价位'],
+        'history': [{'date': d, 'close': round(c, 2)} for d, c in zip(history.get('dates', [])[-120:], history.get('closes', [])[-120:])],
+        'as_of': history.get('as_of'), 'source': history.get('source', '腾讯证券日线'),
+    }
+
+def fetch_candidate_history(meta):
+    provider_symbol = meta['provider_symbol']
+    url = f'https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param={provider_symbol},day,,,320'
+    req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0 stock-dashboard/1.0', 'Accept':'application/json', 'Referer':'https://gu.qq.com/'})
+    payload = json.loads(urllib.request.urlopen(req, timeout=12, context=CTX).read())
+    rows = payload['data'][provider_symbol].get('qfqday') or payload['data'][provider_symbol].get('day') or []
+    points = [(str(row[0]), as_float(row[2])) for row in rows if len(row) >= 3 and as_float(row[2]) > 0]
+    if len(points) < 205:
+        raise ValueError(f"{meta['symbol']} historical data is insufficient")
+    return {'dates':[p[0] for p in points], 'closes':[p[1] for p in points], 'as_of':points[-1][0], 'source':'腾讯证券日线'}
+
+def discovery_market_data():
+    cache = DISCOVERY_MARKET_CACHE
+    if cache['items'] and time.time() - cache['saved_at'] < 6 * 60 * 60:
+        return cache['items']
+    items = {}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(fetch_candidate_history, meta): meta for meta in DISCOVERY_UNIVERSE}
+        for future in as_completed(futures):
+            meta = futures[future]
+            try:
+                items[meta['symbol']] = future.result()
+            except Exception:
+                continue
+    if items:
+        cache.update({'saved_at': time.time(), 'items': items})
+    return items
 
 def has_chinese(value):
     return any('\u4e00' <= char <= '\u9fff' for char in str(value))
@@ -277,7 +408,39 @@ def no_cache(response):
 
 @app.route('/health')
 def health():
-    return jsonify({'status': 'ok', 'routes': ['/health', '/prices', '/analysis']})
+    return jsonify({'status': 'ok', 'routes': ['/health', '/prices', '/recommendations', '/analysis']})
+
+@app.route('/recommendations', methods=['POST', 'OPTIONS'])
+def recommendations():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    body = request.get_json(force=True, silent=True) or {}
+    held_symbols = {normalized_symbol(item.get('symbol')) for item in body.get('holdings', []) if isinstance(item, dict)}
+    held_groups = {DISCOVERY_ALIASES.get(symbol, symbol) for symbol in held_symbols}
+    sector_weights = {str(key): clamp(as_float(value), 0, 1) for key, value in (body.get('sector_weights') or {}).items()}
+    market_data = discovery_market_data()
+    ranked = []
+    for meta in DISCOVERY_UNIVERSE:
+        symbol = normalized_symbol(meta['symbol'])
+        if symbol in held_symbols or meta['group'] in held_groups:
+            continue
+        history = market_data.get(meta['symbol'])
+        if not history:
+            continue
+        candidate = build_discovery_recommendation(meta, history, sector_weights.get(meta['sector'], 0))
+        if candidate:
+            ranked.append(candidate)
+    ranked.sort(key=lambda item: (item['score'], item['diversification_score'], item['momentum_60d']), reverse=True)
+    for index, item in enumerate(ranked[:5], 1):
+        item['rank'] = index
+    if not ranked:
+        return jsonify({'recommendations': [], 'error':'候选行情暂不可用或没有标的通过趋势与风险筛选', 'generated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}), 503
+    return jsonify({
+        'recommendations': ranked[:5], 'universe_size': len(DISCOVERY_UNIVERSE),
+        'eligible_size': len(ranked), 'method_version':'discovery_v1',
+        'generated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'disclaimer':'量化候选仅供研究，不构成收益承诺或自动交易指令。',
+    })
 
 @app.route('/prices')
 def prices():

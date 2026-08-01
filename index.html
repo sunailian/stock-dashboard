@@ -203,9 +203,9 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
 <div id="loading"><div class="spinner"></div></div>
 <div id="stock-detail-modal" role="dialog" aria-modal="true" aria-labelledby="stock-detail-title">
   <div class="stock-detail-card">
-    <div class="stock-detail-header"><div><div class="stock-detail-kicker">POSITION ANALYSIS · 个股持仓分析</div><div class="stock-detail-title" id="stock-detail-title">-- <span class="stock-detail-name" id="stock-detail-name">--</span></div></div><button class="stock-detail-close" id="stock-detail-close" aria-label="关闭">×</button></div>
-    <div class="stock-detail-metrics"><div class="stock-metric"><label>买入股价 · COST</label><strong id="detail-cost">--</strong></div><div class="stock-metric"><label>此刻股价 · NOW</label><strong id="detail-price">--</strong></div><div class="stock-metric"><label>持仓盈利 · P&L</label><strong id="detail-pnl">--</strong></div><div class="stock-metric"><label>收益率 · RETURN</label><strong id="detail-ret">--</strong></div></div>
-    <div class="stock-detail-body"><div class="stock-detail-chart"><div class="stock-detail-chart-title">30日模型走势 · 买入价 / 现价 / 建议位</div><div class="stock-detail-chart-canvas" id="stock-detail-chart"></div></div><div class="stock-advice"><div class="stock-advice-heading"><strong>操作建议 · ACTION PLAN</strong><span class="stock-action hold" id="detail-action">持有</span></div><p id="detail-analysis">正在生成该标的的操作分析。</p><div class="stock-levels"><div class="stock-level"><label>建议入场 / 加仓价</label><b id="detail-buy-zone">--</b></div><div class="stock-level"><label>目标价</label><b id="detail-sell-zone">--</b></div><div class="stock-level"><label>风险 / 止损价</label><b id="detail-stop-loss">--</b></div><div class="stock-level"><label>目标持仓占比</label><b id="detail-target-weight">--</b></div><div class="stock-level"><label>目标上涨空间</label><b id="detail-upside">--</b></div><div class="stock-level"><label>收益风险比</label><b id="detail-risk-reward">--</b></div></div><div class="stock-position-plan"><label>建议持仓与执行方式</label><p id="detail-sizing">等待组合风控</p></div><div class="stock-detail-footer">建议在2小时内有效；价格变化1%、触及建议价位或组合敞口变化时自动重新分析。</div></div></div>
+    <div class="stock-detail-header"><div><div class="stock-detail-kicker" id="stock-detail-kicker">POSITION ANALYSIS · 个股持仓分析</div><div class="stock-detail-title" id="stock-detail-title">-- <span class="stock-detail-name" id="stock-detail-name">--</span></div></div><button class="stock-detail-close" id="stock-detail-close" aria-label="关闭">×</button></div>
+    <div class="stock-detail-metrics"><div class="stock-metric"><label id="detail-cost-label">买入股价 · COST</label><strong id="detail-cost">--</strong></div><div class="stock-metric"><label>此刻股价 · NOW</label><strong id="detail-price">--</strong></div><div class="stock-metric"><label id="detail-pnl-label">持仓盈利 · P&amp;L</label><strong id="detail-pnl">--</strong></div><div class="stock-metric"><label id="detail-ret-label">收益率 · RETURN</label><strong id="detail-ret">--</strong></div></div>
+    <div class="stock-detail-body"><div class="stock-detail-chart"><div class="stock-detail-chart-title">30日模型走势 · 买入价 / 现价 / 建议位</div><div class="stock-detail-chart-canvas" id="stock-detail-chart"></div></div><div class="stock-advice"><div class="stock-advice-heading"><strong>操作建议 · ACTION PLAN</strong><span class="stock-action hold" id="detail-action">持有</span></div><p id="detail-analysis">正在生成该标的的操作分析。</p><div class="stock-levels"><div class="stock-level"><label>建议入场 / 加仓价</label><b id="detail-buy-zone">--</b></div><div class="stock-level"><label>目标价</label><b id="detail-sell-zone">--</b></div><div class="stock-level"><label>风险 / 止损价</label><b id="detail-stop-loss">--</b></div><div class="stock-level"><label>目标持仓占比</label><b id="detail-target-weight">--</b></div><div class="stock-level"><label>目标上涨空间</label><b id="detail-upside">--</b></div><div class="stock-level"><label>收益风险比</label><b id="detail-risk-reward">--</b></div></div><div class="stock-position-plan"><label>建议持仓与执行方式</label><p id="detail-sizing">等待组合风控</p></div><div class="stock-detail-footer" id="stock-detail-footer">建议在2小时内有效；价格变化1%、触及建议价位或组合敞口变化时自动重新分析。</div></div></div>
     <div class="structured-analysis"><div class="analysis-toolbar"><div><div class="analysis-toolbar-title">证据与决策审计 · EVIDENCE & DECISION LOG</div><div class="analysis-meta" id="analysis-meta">等待结构化分析</div></div><button class="analysis-refresh" id="analysis-refresh">刷新深度分析</button></div><div class="analysis-risk" id="analysis-risk"></div><div class="analysis-evidence"><div class="evidence-card bull"><strong>建议理由 · 多头证据</strong><ul id="analysis-bull"><li>等待分析</li></ul></div><div class="evidence-card bear"><strong>风险理由 · 空头证据</strong><ul id="analysis-bear"><li>等待分析</li></ul></div></div><div class="analysis-grid"><div class="analysis-field"><label>执行步骤</label><p id="analysis-actions">--</p></div><div class="analysis-field"><label>重新分析触发条件</label><p id="analysis-review">--</p></div><div class="analysis-field"><label>本次新增证据</label><p id="analysis-new-evidence">暂无</p></div><div class="analysis-field"><label>一致性校验</label><p id="analysis-consistency">等待校验</p></div><div class="analysis-field"><label>建议变化原因</label><p id="analysis-change">--</p></div><div class="analysis-field"><label>历史验证</label><p id="analysis-validation">尚无已到期样本</p></div><div class="analysis-field"><label>逻辑失效条件</label><p id="analysis-invalidation">--</p></div><div class="analysis-field"><label>持有周期</label><p id="analysis-horizon">--</p></div><div class="analysis-field"><label>上次决策复盘</label><p id="analysis-history">暂无历史记录</p></div></div></div>
   </div>
 </div>
@@ -261,8 +261,8 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
   </div>
 
   <div class="panel" id="rec-panel">
-    <div class="panel-title">🔥 个股推荐 · UNIFIED RECOMMENDATIONS <span class="rec-head-note">点击卡片进入同一套个股决策明细</span></div>
-    <div class="rec-strip" id="rec-strip"><div class="rec-empty">正在读取最新决策记录…</div></div>
+    <div class="panel-title">🔥 潜力个股发现 · PORTFOLIO COMPLEMENTS <span class="rec-head-note">严格排除现有持仓 · 每日量化筛选</span></div>
+    <div class="rec-strip" id="rec-strip"><div class="rec-empty">正在筛选组合外候选标的…</div></div>
   </div>
 
 </div>
@@ -293,7 +293,7 @@ const portfolio={
 };
 
 const API_BASE='https://stock-dashboard-ydmplntsru.cn-hangzhou.fcapp.run';
-let allPos=[],gainers=[],priceTime='',latestMarketPrices={};
+let allPos=[],gainers=[],priceTime='',latestMarketPrices={},discoveryCandidates=[],discoveryFetchPromise=null;
 const defaultPrices={GOOG:345.44,MSFT:456.65,NVDA:194.96,TSLA:302.00,BABA:120.41,PAAS:42.14,TLT:82.09,SMH:536.97,'9988.HK':117.00,'981.HK':63.25,'6030.HK':27.32,'100.HK':230.60,'2824.HK':9.43};
 
 function calcAllPos(prices){
@@ -384,6 +384,7 @@ const DECISION_LOG_KEY='zhuoyuan_decision_log_v2';
 const LEGACY_DECISION_LOG_KEY='zhuoyuan_decision_log_v1';
 const ANALYSIS_CACHE_KEY='zhuoyuan_analysis_cache_v3';
 const PRICE_HISTORY_KEY='zhuoyuan_price_history_v1';
+const DISCOVERY_CACHE_KEY='zhuoyuan_discovery_cache_v1';
 function nativeCurrency(ccy){return ccy==='USD'?'$':'HK$'}
 function formatNativePrice(value,ccy){return nativeCurrency(ccy)+Number(value).toFixed(2)}
 function escapeHTML(value){return String(value).replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
@@ -446,7 +447,7 @@ function buildPortfolioContext(p){
   const sectorValue=values.filter(x=>x.sector===p.sector).reduce((sum,x)=>sum+x.marketValueCny,0);
   const group=companyGroup(p.sym);
   const companyValue=values.filter(x=>companyGroup(x.sym)===group).reduce((sum,x)=>sum+x.marketValueCny,0);
-  return {position_weight:current.marketValueCny/invested,sector_weight:sectorValue/invested,company_weight:companyValue/invested,company_group:group,cash_ratio:(portfolio.cash*FX.HKD)/(portfolio.netAssets*FX.HKD||1),annual_target:portfolio.annualTarget};
+  return {position_weight:current?current.marketValueCny/invested:0,sector_weight:sectorValue/invested,company_weight:companyValue/invested,company_group:group,cash_ratio:(portfolio.cash*FX.HKD)/(portfolio.netAssets*FX.HKD||1),annual_target:portfolio.annualTarget};
 }
 function analysisContextSignature(p){
   const context=buildPortfolioContext(p);
@@ -465,7 +466,6 @@ function saveAnalysis(p,data){
   const log=getDecisionLog();
   if(!log.some(item=>item.symbol===p.sym&&item.generated_at===data.generated_at))log.unshift({decision_id:`${p.sym}-${data.generated_at}`,symbol:p.sym,price:p.price,rating:data.rating,original_rating:data.consistency?.original_rating||data.rating,generated_at:data.generated_at,confidence:data.confidence,confidence_basis:data.confidence_basis,change_reason:data.change_reason,consistency:data.consistency,entry_price:data.entry_price,stop_loss:data.stop_loss,price_target:data.price_target,portfolio_context:portfolioContext,benchmark_symbol:p.ccy==='USD'?'SPX.US':null,benchmark_price:p.ccy==='USD'?latestMarketPrices['SPX.US']||null:null,outcomes:{}});
   writeDecisionLog(log);
-  renderRecommendationPool();
 }
 function renderEvidence(id,items){document.getElementById(id).innerHTML=(items||[]).map(item=>`<li>${escapeHTML(item)}</li>`).join('')||'<li>暂无有效证据</li>'}
 function ratingView(rating){
@@ -476,16 +476,35 @@ function ratingView(rating){
   return {label:'持有',tone:'hold'};
 }
 function renderRecommendationPool(){
-  const strip=document.getElementById('rec-strip');if(!strip||!allPos.length)return;
-  const actionPriority={Buy:100,Overweight:95,Underweight:90,Sell:85,Hold:60};
-  const candidates=allPos.map(p=>{const data=getCachedAnalysis(p);return {p,data,score:data?(actionPriority[data.rating]||50)+Math.min(10,Math.abs(p.ret)/10):Math.min(40,Math.abs(p.ret))}}).sort((a,b)=>(Boolean(b.data)-Boolean(a.data))||b.score-a.score).slice(0,5);
-  strip.innerHTML=candidates.map(({p,data})=>{
-    const view=data?ratingView(data.rating):{label:'待分析',tone:'hold'};
-    const reason=data?(data.executive_summary||'已生成统一决策，点击查看完整理由。'):`当前收益率 ${p.ret>=0?'+':''}${p.ret.toFixed(1)}%，点击生成建议价格、理由和目标仓位。`;
-    const entry=data&&data.entry_price?formatNativePrice(data.entry_price,p.ccy):'--';
-    const targetWeight=data&&Number.isFinite(Number(data.target_position_pct))?Number(data.target_position_pct).toFixed(1)+'%':'--';
-    return `<button class="rec-card" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 统一推荐"><span class="rec-card-top"><span class="rec-card-symbol">${p.sym}</span><span class="rec-card-action ${view.tone}">${view.label}</span></span><span class="rec-card-name">${escapeHTML(p.name)}</span><span class="rec-card-reason">${escapeHTML(reason)}</span><span class="rec-card-meta"><span>建议价 ${entry}</span><span>目标仓位 ${targetWeight}</span></span></button>`;
+  const strip=document.getElementById('rec-strip');if(!strip)return;
+  if(!discoveryCandidates.length){strip.innerHTML='<div class="rec-empty">正在从组合外候选池筛选趋势、风险与行业互补性…</div>';return}
+  strip.innerHTML=discoveryCandidates.map(p=>{
+    const reason=`${p.sector}互补 · 60日动量 ${p.momentum_60d>=0?'+':''}${(p.momentum_60d*100).toFixed(1)}% · 120日回撤 ${(p.drawdown_120d*100).toFixed(1)}%`;
+    return `<button class="rec-card" data-symbol="${p.sym}" aria-label="查看组合外候选 ${p.sym}"><span class="rec-card-top"><span class="rec-card-symbol">#${p.rank} ${p.sym}</span><span class="rec-card-action add">评分 ${p.score}</span></span><span class="rec-card-name">${escapeHTML(p.name)} · ${escapeHTML(p.sector)} · 当前未持有</span><span class="rec-card-reason">${escapeHTML(reason)}</span><span class="rec-card-meta"><span>观察价 ${formatNativePrice(p.entry_price,p.ccy)}</span><span>仓位上限 ${Number(p.target_position_pct).toFixed(1)}%</span></span></button>`;
   }).join('');
+}
+function discoveryContext(){
+  const values=allPos.map(p=>({...p,value:Math.abs(p.price*p.qty*p.fx)})),total=values.reduce((sum,p)=>sum+p.value,0)||1,sectors={};
+  values.forEach(p=>{sectors[p.sector]=(sectors[p.sector]||0)+p.value/total});
+  return {holdings:allPos.map(p=>({symbol:p.sym,sector:p.sector})),sector_weights:sectors};
+}
+function discoverySignature(){
+  const context=discoveryContext();return context.holdings.map(p=>p.symbol).sort().join(',')+'|'+Object.entries(context.sector_weights).sort().map(([key,value])=>key+Math.round(value*100)).join(',');
+}
+async function fetchRecommendations(force=false){
+  if(discoveryFetchPromise)return discoveryFetchPromise;
+  const cached=readStorage(DISCOVERY_CACHE_KEY,null),signature=discoverySignature();
+  if(!force&&cached&&cached.signature===signature&&Date.now()-cached.savedAt<6*60*60*1000&&cached.items?.length){
+    discoveryCandidates=cached.items.map(item=>({...item,sym:item.symbol,qty:0,cost:0,ret:item.momentum_60d*100,pnl:0,fx:FX[item.ccy],isDiscovery:true}));renderRecommendationPool();return;
+  }
+  renderRecommendationPool();
+  discoveryFetchPromise=(async()=>{try{
+    const resp=await fetch(API_BASE+'/recommendations',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify(discoveryContext())});
+    const data=await resp.json();if(!resp.ok||!data.recommendations?.length)throw new Error(data.error||'recommendations '+resp.status);
+    localStorage.setItem(DISCOVERY_CACHE_KEY,JSON.stringify({savedAt:Date.now(),signature,items:data.recommendations}));
+    discoveryCandidates=data.recommendations.map(item=>({...item,sym:item.symbol,qty:0,cost:0,ret:item.momentum_60d*100,pnl:0,fx:FX[item.ccy],isDiscovery:true}));renderRecommendationPool();
+  }catch(error){document.getElementById('rec-strip').innerHTML='<div class="rec-empty">组合外候选暂不可用：行情源未返回足够日线数据。不会用现有持仓冒充推荐。</div>';console.log('Discovery:',error)}finally{discoveryFetchPromise=null}})();
+  return discoveryFetchPromise;
 }
 function renderDecisionHistory(p,currentGeneratedAt){
   const previous=getDecisionLog().find(item=>item.symbol===p.sym&&item.generated_at!==currentGeneratedAt);
@@ -548,9 +567,43 @@ async function fetchStructuredAnalysis(p,force=false){
   }catch(e){document.getElementById('analysis-meta').textContent='深度分析更新失败，保留当前结果；请稍后重试';console.log('Structured analysis:',e)}
   finally{button.disabled=false;button.textContent='刷新深度分析'}
 }
+function openDiscoveryDetail(p){
+  activeDetailSymbol=p.sym;
+  const currency=nativeCurrency(p.ccy),history=p.history||[];
+  document.getElementById('stock-detail-kicker').textContent='DISCOVERY ANALYSIS · 组合外潜力标的';
+  document.getElementById('stock-detail-title').firstChild.textContent=p.sym+' ';
+  document.getElementById('stock-detail-name').textContent=p.name+' · '+p.sector;
+  document.getElementById('detail-cost-label').textContent='当前状态 · POSITION';
+  document.getElementById('detail-pnl-label').textContent='量化评分 · SCORE';
+  document.getElementById('detail-ret-label').textContent='60日动量 · MOMENTUM';
+  document.getElementById('detail-cost').textContent='未持有';
+  document.getElementById('detail-price').textContent=formatNativePrice(p.price,p.ccy);
+  document.getElementById('detail-pnl').textContent=p.score+'/100';document.getElementById('detail-pnl').className=' up';
+  document.getElementById('detail-ret').textContent=(p.momentum_60d>=0?'+':'')+(p.momentum_60d*100).toFixed(1)+'%';document.getElementById('detail-ret').className=' '+(p.momentum_60d>=0?'up':'dn');
+  document.querySelector('.stock-detail-chart-title').textContent='真实日线走势 · 最近120个交易日 / 建议位';
+  document.getElementById('stock-detail-modal').classList.add('open');document.body.style.overflow='hidden';
+  if(detailChart)detailChart.dispose();
+  detailChart=echarts.init(document.getElementById('stock-detail-chart'));
+  detailChart.setOption({animationDuration:500,tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.96)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11},valueFormatter:v=>currency+Number(v).toFixed(2)},grid:{left:58,right:18,top:18,bottom:28},xAxis:{type:'category',data:history.map(item=>item.date),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9,hideOverlap:true}},yAxis:{type:'value',scale:true,axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>currency+Number(v).toFixed(2)},splitLine:{lineStyle:{color:'rgba(255,255,255,.04)'}}},series:[{name:'真实日线收盘价',type:'line',data:history.map(item=>item.close),smooth:false,symbol:'none',lineStyle:{color:'#ff6a00',width:2},areaStyle:{color:'rgba(255,80,0,.10)'}}]});
+  const data={rating:'Buy',confidence:p.score,executive_summary:p.summary,bull_case:p.bull_case,bear_case:p.bear_case,entry_price:p.entry_price,stop_loss:p.stop_loss,price_target:p.price_target,target_position_pct:p.target_position_pct,expected_upside_pct:p.expected_upside_pct,risk_reward_ratio:p.risk_reward_ratio,position_sizing:p.position_sizing,action_steps:p.action_steps,review_trigger:'每日收盘后更新筛选；触及观察价、止损价或趋势条件改变时复核。',new_evidence:[`60日价格动量 ${(p.momentum_60d*100).toFixed(1)}%`,`当前${p.sector}组合权重 ${(p.sector_weight*100).toFixed(1)}%`],consistency:{status:'passed',passed:true},change_reason:'首次进入组合外候选池，尚无上一条建议。',invalidation_conditions:p.invalidation_conditions,time_horizon:'1-3个月观察',generated_at:p.as_of,source:'quant_discovery'};
+  applyStructuredAnalysis(p,data,false);
+  document.getElementById('detail-action').textContent='等待建仓';document.getElementById('detail-action').className='stock-action add';
+  document.getElementById('analysis-meta').textContent=`每日量化筛选 · 数据截至 ${p.as_of} · 评分 ${p.score}/100 · ${p.source}`;
+  document.getElementById('analysis-validation').textContent='新候选尚无持仓后验证样本；评分不代表收益概率';
+  document.getElementById('analysis-refresh').textContent='刷新候选筛选';
+  document.getElementById('stock-detail-footer').textContent='候选每日收盘后重算；评分用于筛选，不构成收益承诺。未进入建议区间前不追涨。';
+}
 function openStockDetail(symbol){
+  const candidate=discoveryCandidates.find(x=>x.sym===symbol);if(candidate){openDiscoveryDetail(candidate);return}
   const p=allPos.find(x=>x.sym===symbol);if(!p)return;
   activeDetailSymbol=symbol;
+  document.getElementById('stock-detail-kicker').textContent='POSITION ANALYSIS · 个股持仓分析';
+  document.getElementById('detail-cost-label').textContent='买入股价 · COST';
+  document.getElementById('detail-pnl-label').textContent='持仓盈利 · P&L';
+  document.getElementById('detail-ret-label').textContent='收益率 · RETURN';
+  document.querySelector('.stock-detail-chart-title').textContent='30日模型走势 · 买入价 / 现价 / 建议位';
+  document.getElementById('analysis-refresh').textContent='刷新深度分析';
+  document.getElementById('stock-detail-footer').textContent='建议在2小时内有效；价格变化1%、触及建议价位或组合敞口变化时自动重新分析。';
   const ret=p.ret,currency=nativeCurrency(p.ccy);
   const costLabel=p.cost>0?formatNativePrice(p.cost,p.ccy):'负成本';
   const pnl=p.pnl;
@@ -588,7 +641,7 @@ function openStockDetail(symbol){
   fetchStructuredAnalysis(p);
 }
 function closeStockDetail(){document.getElementById('stock-detail-modal').classList.remove('open');document.body.style.overflow='';activeDetailSymbol='';}
-document.addEventListener('click',e=>{const target=e.target.closest('.srow,.rec-card');if(target)openStockDetail(target.dataset.symbol);if(e.target.id==='analysis-refresh'&&activeDetailSymbol){const p=allPos.find(x=>x.sym===activeDetailSymbol);if(p)fetchStructuredAnalysis(p,true)}if(e.target.id==='stock-detail-close'||e.target.id==='stock-detail-modal')closeStockDetail()});
+document.addEventListener('click',e=>{const target=e.target.closest('.srow,.rec-card');if(target)openStockDetail(target.dataset.symbol);if(e.target.id==='analysis-refresh'&&activeDetailSymbol){const p=allPos.find(x=>x.sym===activeDetailSymbol);if(p)fetchStructuredAnalysis(p,true);else if(discoveryCandidates.some(x=>x.sym===activeDetailSymbol)){const symbol=activeDetailSymbol;fetchRecommendations(true).then(()=>{const updated=discoveryCandidates.find(x=>x.sym===symbol);if(updated)openDiscoveryDetail(updated)})}}if(e.target.id==='stock-detail-close'||e.target.id==='stock-detail-modal')closeStockDetail()});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList.contains('srow'))openStockDetail(e.target.dataset.symbol);if(e.key==='Escape')closeStockDetail()});
 
 // ── Market tickers ──
@@ -614,7 +667,7 @@ function initAll(prices,updated=''){
   updateDecisionOutcomes();
   priceTime=updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
   refreshAllCharts();
-  renderRecommendationPool();
+  if(discoveryCandidates.length)renderRecommendationPool();else fetchRecommendations();
   refreshOpenDetailPrice();
   document.getElementById('live-label').textContent='LIVE '+priceTime;
   // Update hero numbers
