@@ -342,7 +342,8 @@ function renderServerRiskReport(risk,market){
   document.getElementById('health-score').textContent=total;
   document.getElementById('health-score-ring').style.setProperty('--score',total+'%');
   document.getElementById('health-status').textContent=status+' · 风险模型影子模式';
-  document.getElementById('health-summary-text').textContent=`评分仅衡量组合风险健康度。历史覆盖 ${coverage.toFixed(0)}%，总敞口 ${Number(metrics.gross_exposure_pct||0).toFixed(1)}%，${portfolio.orderDataComplete?`未完成订单 ${pendingOrders} 笔`:'订单状态不可用，禁止新增仓位'}${portfolio.priceSourceStatus==='degraded_until_longbridge_quote_sdk'?'；当前行情为新浪/腾讯降级源':''}。`;
+  const quoteNote=portfolio.priceSourceStatus==='live'?'；行情来自 Longbridge':portfolio.priceSourceStatus==='partial_degraded'?'；部分行情已降级或缺失':portfolio.priceSourceStatus==='unavailable'?'；行情当前不可用':'；当前行情为新浪/腾讯降级源';
+  document.getElementById('health-summary-text').textContent=`评分仅衡量组合风险健康度。历史覆盖 ${coverage.toFixed(0)}%，总敞口 ${Number(metrics.gross_exposure_pct||0).toFixed(1)}%，${portfolio.orderDataComplete?`未完成订单 ${pendingOrders} 笔`:'订单状态不可用，禁止新增仓位'}${quoteNote}。`;
   document.querySelector('.health-meta').textContent=`模型 ${risk.model_version} · 快照 ${risk.snapshot_id||'--'} · 策略${risk.policy_status==='confirmed'?'已确认':'未确认'} · 暂未覆盖历史汇率风险`;
   document.getElementById('health-priority').textContent=marginCall>0?`账户追缴保证金约 ¥${marginCall.toLocaleString()}；在风险解除前禁止新增仓位。`:`优先检查「${weak.name}」：${weak.desc}。${largestRisk?`最大风险贡献来自 ${largestRisk.symbol}（${largestRisk.variance_contribution_pct.toFixed(1)}%）。`:''}`;
   document.getElementById('health-dims').innerHTML=dimensions.map(item=>`<div class="health-dim"><div class="health-dim-top"><b>${item.name}</b><span>${item.score}/${item.max}</span></div><small>${item.desc}</small><div class="health-bar"><i style="--fill:${item.score/item.max*100}%"></i></div></div>`).join('');
@@ -771,7 +772,7 @@ function applyAccountSnapshot(data){
   document.getElementById('sk-usd').textContent='$ '+portfolio.cashUSD.toLocaleString(undefined,{maximumFractionDigits:2});
   document.getElementById('sk-hkd').textContent='HK$ '+portfolio.cashHKD.toLocaleString(undefined,{maximumFractionDigits:2});
   updateMarkets(data.prices||{});initAll(data.prices||{},data.fetched_at);
-  if(data.price_source_status==='degraded_until_longbridge_quote_sdk'){const live=document.getElementById('live-label');live.textContent='LIVE* '+formatUTC8Time(data.fetched_at);live.title='持仓、成本和账户来自Longbridge；当前股票行情使用新浪/腾讯降级源。'}
+  {const live=document.getElementById('live-label'),isLive=data.price_source_status==='live';live.textContent=(isLive?'LIVE ':'LIVE* ')+formatUTC8Time(data.fetched_at);live.title=isLive?'持仓、成本、账户和股票行情均来自 Longbridge。':data.price_source_status==='partial_degraded'?'持仓、成本和账户来自 Longbridge；部分股票行情使用降级源或暂时缺失。':data.price_source_status==='unavailable'?'持仓、成本和账户来自 Longbridge；股票行情当前不可用。':'持仓、成本和账户来自 Longbridge；当前股票行情使用新浪/腾讯降级源。';}
   if(!performanceFetchedAt||Date.now()-performanceFetchedAt>15*60*1000)fetchPerformance();
   if(data.complete&&(!riskFetchedAt||Date.now()-riskFetchedAt>5*60*1000))fetchRiskReport(false);
   if(!data.complete){

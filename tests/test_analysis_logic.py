@@ -32,6 +32,7 @@ def load_logic():
         'pearson', 'company_group_symbol', 'portfolio_risk_from_histories',
         'deterministic_price_plan', 'factor_analysis_from_history',
         'longbridge_symbol', 'longbridge_counter_id', 'nested_dicts',
+        'quote_timestamp', 'latest_quote_point',
         'normalize_order_status', 'normalize_pending_orders', 'parse_event_day',
         'symbol_from_counter', 'normalize_finance_events',
     }
@@ -305,6 +306,17 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertEqual(result[0]['symbol'],'AAPL')
         self.assertEqual(result[0]['side'],'buy')
         self.assertEqual(result[0]['executed_quantity'],4)
+
+    def test_latest_quote_point_uses_newest_extended_session(self):
+        quote={
+            'last_done':'200.75','timestamp':'2026-07-31T20:00:00Z',
+            'pre_market_quote':{'last_done':'198.49','timestamp':'2026-07-31T13:30:00Z'},
+            'post_market_quote':{'last_done':'198.95','timestamp':'2026-07-31T23:59:59Z'},
+            'overnight_quote':{'last_done':'198.33','timestamp':'2026-07-31T08:00:00Z'},
+        }
+        result=self.logic['latest_quote_point'](quote)
+        self.assertEqual(result['session'],'post_market')
+        self.assertEqual(result['price'],198.95)
 
     def test_account_snapshot_exposes_margin_and_pending_orders(self):
         stock_data={'list':[{'stock_info':[{'symbol':'AAPL.US','quantity':'1','available_quantity':'1','cost_price':'100','currency':'USD','market':'US'}]}]}

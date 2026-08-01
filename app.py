@@ -1,5 +1,5 @@
 """股票看板 API — 行情代理、组合外标的筛选与 AI 分析。"""
-import json, os, urllib.request, urllib.error, ssl, time, math, statistics, hashlib, hmac, base64, calendar
+import json, os, urllib.request, urllib.error, ssl, time, math, statistics, hashlib, hmac, base64, calendar, threading
 from datetime import date, datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlencode
@@ -42,6 +42,8 @@ ACCOUNT_CACHE = {'saved_at': 0, 'snapshot': None}
 MARKET_CACHE = {'saved_at': 0, 'data': None}
 PORTFOLIO_RISK_CACHE = {'saved_at': 0, 'signature': None, 'data': None}
 EVENT_CACHE = {'saved_at': 0, 'signature': None, 'data': None}
+QUOTE_CONTEXT_CACHE = {'signature': None, 'context': None}
+QUOTE_CONTEXT_LOCK = threading.Lock()
 ACTIVE_ORDER_STATUSES = {
     'new', 'waittonew', 'notreported', 'pending', 'submitted', 'partialfilled',
     'partiallyfilled', 'waittocancel', 'pendingcancel', 'pendingreplace', 'replacednotreported',
@@ -157,6 +159,9 @@ def longbridge_request(path, query_params=None):
     access_token = credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN')
     if not all((app_key, app_secret, access_token)):
         raise RuntimeError('LongPort credentials are not configured in FC environment variables')
+    app_key = app_key.removeprefix('Bearer ')
+    app_secret = app_secret.removeprefix('Bearer ')
+    access_token = access_token.removeprefix('Bearer ')
     query = urlencode(query_params or {}, doseq=True)
     region = os.getenv('LONGBRIDGE_DC_REGION') or ('us' if any(value.removeprefix('Bearer ').startswith('us_') for value in (app_key, app_secret, access_token)) else 'ap')
     configured_url = os.getenv('LONGBRIDGE_HTTP_URL')
@@ -247,6 +252,93 @@ def longbridge_counter_id(symbol):
     if value.endswith('.US'):
         return 'ST/US/' + value[:-3]
     return value
+
+def quote_timestamp(value):
+    if isinstance(value, datetime):
+        return value.timestamp()
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value or '').strip().replace('Z', '+00:00')
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        return 0.0
+
+def latest_quote_point(quote):
+    """Select the newest regular/pre/post/overnight price from an SDK quote."""
+    def field(obj, name):
+        return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+    candidates = [('regular', quote)]
+    for session, name in (
+        ('pre_market', 'pre_market_quote'), ('post_market', 'post_market_quote'),
+        ('overnight', 'overnight_quote'),
+    ):
+        value = field(quote, name)
+        if value is not None:
+            candidates.append((session, value))
+    valid = []
+    for session, value in candidates:
+        price = as_float(field(value, 'last_done') or field(value, 'last'))
+        if price <= 0:
+            continue
+        timestamp = field(value, 'timestamp')
+        valid.append((quote_timestamp(timestamp), session, price, timestamp))
+    if not valid:
+        return None
+    _, session, price, timestamp = max(valid, key=lambda item:item[0])
+    return {'price':price, 'session':session, 'timestamp':timestamp.isoformat() if isinstance(timestamp, datetime) else str(timestamp or '')}
+
+def longbridge_quote_context():
+    app_key = credential('LONGBRIDGE_APP_KEY', 'LONGPORT_APP_KEY')
+    app_secret = credential('LONGBRIDGE_APP_SECRET', 'LONGPORT_APP_SECRET')
+    access_token = credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN')
+    if not all((app_key, app_secret, access_token)):
+        raise RuntimeError('LongPort credentials are not configured in FC environment variables')
+    app_key = app_key.removeprefix('Bearer ')
+    app_secret = app_secret.removeprefix('Bearer ')
+    access_token = access_token.removeprefix('Bearer ')
+    signature = hashlib.sha256(f'{app_key}|{access_token}'.encode()).hexdigest()
+    with QUOTE_CONTEXT_LOCK:
+        if QUOTE_CONTEXT_CACHE['context'] is not None and QUOTE_CONTEXT_CACHE['signature'] == signature:
+            return QUOTE_CONTEXT_CACHE['context']
+        try:
+            from longport.openapi import Config, QuoteContext
+        except (ImportError, OSError) as exc:
+            raise RuntimeError('Longport行情SDK未打包到FC，请使用build_fc_bundle.py生成部署包') from exc
+        region = os.getenv('LONGBRIDGE_DC_REGION') or ('us' if access_token.startswith('us_') else 'ap')
+        access_region = str(os.getenv('LONGBRIDGE_REGION') or '').lower()
+        fc_region = str(os.getenv('FC_REGION') or os.getenv('FC_REGION_NAME') or '')
+        default_http_url = 'https://openapi.longbridge.cn' if region == 'ap' and (access_region == 'cn' or fc_region.startswith('cn-')) else 'https://openapi.longbridge.com'
+        kwargs = {
+            'http_url':os.getenv('LONGBRIDGE_HTTP_URL') or os.getenv('LONGPORT_HTTP_URL') or default_http_url,
+            'enable_overnight':True, 'enable_print_quote_packages':False, 'log_path':'/tmp',
+        }
+        quote_ws_url = os.getenv('LONGBRIDGE_QUOTE_WS_URL') or os.getenv('LONGPORT_QUOTE_WS_URL')
+        if quote_ws_url:
+            kwargs['quote_ws_url'] = quote_ws_url
+        if hasattr(Config, 'from_apikey'):
+            config = Config.from_apikey(app_key, app_secret, access_token, **kwargs)
+        else:
+            config = Config(app_key, app_secret, access_token, **kwargs)
+        context = QuoteContext(config)
+        QUOTE_CONTEXT_CACHE.update({'signature':signature, 'context':context})
+        return context
+
+def fetch_longbridge_sdk_prices(symbols):
+    clean = sorted({normalized_symbol(symbol) for symbol in symbols if normalized_symbol(symbol)})
+    if not clean:
+        return {}, {}
+    response = longbridge_quote_context().quote([longbridge_symbol(symbol) for symbol in clean])
+    prices, details = {}, {}
+    for quote in response:
+        raw_symbol = quote.get('symbol') if isinstance(quote, dict) else getattr(quote, 'symbol', None)
+        symbol = normalized_symbol(raw_symbol)
+        point = latest_quote_point(quote)
+        if not symbol or point is None:
+            continue
+        prices[symbol] = point['price']
+        details[symbol] = {'source':'longbridge_quote_sdk', **point}
+    return prices, details
 
 def nested_dicts(value):
     if isinstance(value, dict):
@@ -776,7 +868,7 @@ def aggregate_positions(stock_data):
         positions.append(item)
     return sorted(positions, key=lambda item: (item['market'], item['symbol']))
 
-def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetched_at=None, source_errors=None, orders_data=None, optional_source_errors=None):
+def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetched_at=None, source_errors=None, orders_data=None, optional_source_errors=None, price_source='sina_tencent_fallback', price_source_status='degraded_until_longbridge_quote_sdk', price_details=None):
     positions = aggregate_positions(stock_data)
     fx = rates_to_cny(exchange_data)
     for item in positions:
@@ -824,7 +916,7 @@ def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetc
     return {
         'source':'longbridge_openapi', 'fetched_at':fetched_at or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'positions':positions, 'prices':prices, 'fx_to_cny':fx,
-        'price_source':'sina_tencent_fallback', 'price_source_status':'degraded_until_longbridge_quote_sdk',
+        'price_source':price_source, 'price_source_status':price_source_status, 'price_details':price_details or {},
         'pending_orders':pending_orders, 'order_data_complete':'orders' not in (optional_source_errors or {}),
         'account':{
             'net_assets_cny':round(net_assets_cny, 2), 'total_cash_cny':round(total_cash_cny, 2),
@@ -866,15 +958,36 @@ def get_account_snapshot(force=False):
     if 'positions' in source_errors:
         raise RuntimeError('券商持仓接口不可用：' + source_errors['positions'])
     symbols = [item['symbol'] for item in aggregate_positions(stock_data)]
-    try:
-        prices = fetch_market_prices(symbols)
-    except Exception as exc:
-        prices = {}
-        source_errors['prices'] = str(exc)
     optional_errors = {}
+    prices, price_details = {}, {}
+    price_source, price_source_status = 'longbridge_quote_sdk', 'live'
+    try:
+        prices, price_details = fetch_longbridge_sdk_prices(symbols)
+    except Exception as exc:
+        optional_errors['longbridge_quote_sdk'] = str(exc)
+    sdk_price_count = len(prices)
+    missing = [symbol for symbol in symbols if normalized_symbol(symbol) not in prices]
+    if missing:
+        price_source = 'longbridge_quote_sdk' if sdk_price_count else 'unavailable'
+        price_source_status = 'partial_degraded' if sdk_price_count else 'unavailable'
+        try:
+            fallback_prices = fetch_market_prices(missing)
+            prices.update(fallback_prices)
+            for symbol in fallback_prices:
+                price_details[symbol] = {'source':'sina_tencent_fallback', 'session':'unknown', 'timestamp':iso_now()}
+            if sdk_price_count == 0:
+                price_source, price_source_status = 'sina_tencent_fallback', 'degraded_until_longbridge_quote_sdk'
+            elif fallback_prices:
+                price_source, price_source_status = 'longbridge_with_third_party_fallback', 'partial_degraded'
+        except Exception as exc:
+            source_errors['prices'] = str(exc)
     if 'orders' in source_errors:
         optional_errors['orders'] = source_errors.pop('orders')
-    snapshot = build_account_snapshot(stock_data, balance_data, exchange_data, prices, source_errors=source_errors, orders_data=results.get('orders'), optional_source_errors=optional_errors)
+    snapshot = build_account_snapshot(
+        stock_data, balance_data, exchange_data, prices, source_errors=source_errors,
+        orders_data=results.get('orders'), optional_source_errors=optional_errors,
+        price_source=price_source, price_source_status=price_source_status, price_details=price_details,
+    )
     cache.update({'saved_at':time.time(), 'snapshot':snapshot})
     return snapshot
 
@@ -1509,7 +1622,12 @@ def health():
         credential('LONGBRIDGE_APP_SECRET', 'LONGPORT_APP_SECRET'),
         credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN'),
     ))
-    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'quote_source':'sina_tencent_fallback', 'quote_status':'degraded_until_longbridge_quote_sdk', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/events', '/investment-policy', '/market', '/portfolio-risk', '/factor-analysis', '/analysis']})
+    try:
+        import longport
+        quote_sdk_available = True
+    except (ImportError, OSError):
+        quote_sdk_available = False
+    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'quote_source_policy':'longbridge_sdk_then_sina_tencent_fallback', 'quote_sdk_available':quote_sdk_available, 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/events', '/investment-policy', '/market', '/portfolio-risk', '/factor-analysis', '/analysis']})
 
 @app.route('/session', methods=['POST', 'OPTIONS'])
 def create_session():
@@ -1783,7 +1901,7 @@ def analysis():
         'decision_version': 3, 'rating_source':'deterministic_policy_engine',
         'desired_weight':None, 'binding_constraint':'policy_not_configured' if not policy.get('confirmed_by_user') else 'shadow_models_not_advisory',
         'risk_flags': risk_flags,
-        'data_scope': 'verified_live_longbridge_position_cost_account_with_third_party_quote_and_daily_history_fallback',
+        'data_scope': 'verified_live_longbridge_position_cost_account_and_preferred_quote_with_audited_fallback',
         'price_source':snapshot.get('price_source'), 'price_source_status':snapshot.get('price_source_status'),
         'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'],
         'factor_analysis':factor_result, 'market_regime':market_result, 'portfolio_risk':portfolio_risk_result, 'narrative':narrative,
