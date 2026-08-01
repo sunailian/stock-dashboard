@@ -39,6 +39,15 @@ DISCOVERY_MARKET_CACHE = {'saved_at': 0, 'items': {}}
 HISTORY_CACHE = {}
 PERFORMANCE_CACHE = {'saved_at':0, 'data':None}
 ACCOUNT_CACHE = {'saved_at': 0, 'snapshot': None}
+MARKET_CACHE = {'saved_at': 0, 'data': None}
+PORTFOLIO_RISK_CACHE = {'saved_at': 0, 'signature': None, 'data': None}
+POLICY_DEFAULT = {
+    'version': 1, 'base_currency': 'CNY', 'annual_return_objective': .20,
+    'benchmark_by_market': {'US':'SPY.US', 'HK':'HSI.HK'},
+    'risk': {'target_volatility_annualized':None, 'max_drawdown_tolerance':None, 'minimum_cash_pct':None, 'maximum_invested_pct':None},
+    'limits': {'single_position_pct':None, 'same_company_pct':None, 'sector_pct':None, 'leveraged_etf_pct':None},
+    'target_bands': [], 'confirmed_by_user': False, 'updated_at': None,
+}
 SECTOR_BY_SYMBOL = {
     'GOOG':'科技', 'AAPL':'科技', 'MSFT':'科技', 'NVDA':'半导体', 'TSLA':'汽车',
     'BABA':'电商', 'PAAS':'矿业', 'TLT':'债券', 'SMH':'半导体', 'APPX':'杠杆ETF',
@@ -60,8 +69,44 @@ def normalized_symbol(symbol):
     if value.endswith('.US'):
         value = value[:-3]
     if value.endswith('.HK'):
-        value = value[:-3].zfill(4) + '.HK'
+        code = value[:-3]
+        value = (code.zfill(4) if code.isdigit() else code) + '.HK'
     return value
+
+def iso_now():
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+
+def investment_policy():
+    """Load immutable policy from FC environment; never infer risk appetite from returns."""
+    policy = json.loads(json.dumps(POLICY_DEFAULT))
+    raw = os.getenv('INVESTMENT_POLICY_JSON', '').strip()
+    if raw:
+        try:
+            supplied = json.loads(raw)
+            for key in ('version', 'base_currency', 'annual_return_objective', 'benchmark_by_market', 'risk', 'limits', 'target_bands', 'confirmed_by_user', 'updated_at'):
+                if key in supplied:
+                    if key in ('risk', 'limits', 'benchmark_by_market') and isinstance(supplied[key], dict):
+                        policy[key].update(supplied[key])
+                    else:
+                        policy[key] = supplied[key]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            policy['configuration_error'] = 'INVESTMENT_POLICY_JSON 不是有效 JSON，已使用未确认默认配置'
+    return policy
+
+def validate_policy(policy):
+    errors = []
+    for section in ('risk', 'limits'):
+        if not isinstance(policy.get(section), dict):
+            errors.append(f'{section} 必须为对象')
+            continue
+        for key, value in policy[section].items():
+            if value is not None and not 0 <= as_float(value, -1) <= 1:
+                errors.append(f'{section}.{key} 必须在0到1之间或为null')
+    for index, band in enumerate(policy.get('target_bands') or []):
+        low, target, high = (band.get('min_pct'), band.get('target_pct'), band.get('max_pct'))
+        if any(value is None for value in (low, target, high)) or not 0 <= as_float(low, -1) <= as_float(target, -1) <= as_float(high, -1) <= 1:
+            errors.append(f'target_bands[{index}] 必须满足 0≤min≤target≤max≤1')
+    return errors
 
 def credential(name, legacy_name):
     return os.getenv(name) or os.getenv(legacy_name) or ''
@@ -268,6 +313,8 @@ def fetch_market_prices(symbols):
 
 def tencent_history_symbol(symbol):
     symbol = normalized_symbol(symbol)
+    if symbol == 'HSI.HK':
+        return 'hkHSI'
     if symbol.endswith('.HK'):
         return 'hk' + symbol[:-3].zfill(5)
     req = urllib.request.Request(
@@ -314,6 +361,92 @@ def technical_snapshot(points):
         'trend':'上升' if price > sma50 > sma200 else '下降' if price < sma50 < sma200 else '震荡',
         'sample_days':len(closes),
     }
+
+def percentile(values, probability):
+    clean = sorted(as_float(value) for value in values if math.isfinite(as_float(value, float('nan'))))
+    if not clean:
+        return None
+    position = clamp(probability, 0, 1) * (len(clean) - 1)
+    lower, upper = math.floor(position), math.ceil(position)
+    if lower == upper:
+        return clean[lower]
+    return clean[lower] + (clean[upper] - clean[lower]) * (position - lower)
+
+def daily_returns(points):
+    by_date = {str(item.get('date')):as_float(item.get('close')) for item in points if as_float(item.get('close')) > 0}
+    dates = sorted(by_date)
+    return {dates[index]:by_date[dates[index]] / by_date[dates[index - 1]] - 1 for index in range(1, len(dates))}
+
+def realized_volatility_series(points, window):
+    values = list(daily_returns(points).values())
+    return [statistics.pstdev(values[index-window:index]) * math.sqrt(252) for index in range(window, len(values) + 1) if window > 1]
+
+def market_regime_from_history(history, market, breadth=None, sentiment=None):
+    points = history.get('points') or []
+    if len(points) < 200:
+        return {'regime':'unavailable', 'score':None, 'risk_multiplier':None, 'confidence':0, 'data_coverage':0, 'signals':{}, 'quality':{'warnings':['基准历史少于200个交易日']}}
+    technical = technical_snapshot(points)
+    trend_score = (20 if technical['price'] > technical['sma200'] else 0) + (20 if technical['sma50'] > technical['sma200'] else 0)
+    vol20_series, vol60_series = realized_volatility_series(points, 20), realized_volatility_series(points, 60)
+    current20 = vol20_series[-1] if vol20_series else None
+    current60 = vol60_series[-1] if vol60_series else None
+    history_vol = vol60_series[:-1]
+    if history_vol and current60 is not None:
+        rank = sum(value <= current60 for value in history_vol) / len(history_vol)
+        vol_score = 25 if rank <= .40 else 0 if rank >= .80 else 25 * (.80 - rank) / .40
+    else:
+        rank, vol_score = None, 12.5
+    breadth_available = isinstance(breadth, dict) and as_float(breadth.get('rise')) + as_float(breadth.get('fall')) > 0
+    if breadth_available:
+        rise, fall, flat = as_float(breadth.get('rise')), as_float(breadth.get('fall')), as_float(breadth.get('flat'))
+        breadth_ratio = rise / (rise + fall)
+        breadth_score = clamp((breadth_ratio - .35) / .30 * 25, 0, 25)
+    else:
+        rise = fall = flat = 0
+        breadth_ratio, breadth_score = None, 12.5
+    sentiment_available = isinstance(sentiment, dict) and any(sentiment.get(key) is not None for key in ('market_temperature', 'large_net_flow'))
+    sentiment_score = 5.0
+    if sentiment_available:
+        temperature = sentiment.get('market_temperature')
+        flow = sentiment.get('large_net_flow')
+        sentiment_score = (clamp(as_float(temperature, 50) / 100 * 5, 0, 5) if temperature is not None else 2.5)
+        sentiment_score += (5 if as_float(flow) > 0 else 0 if as_float(flow) < 0 else 2.5)
+    score = round(trend_score + vol_score + breadth_score + sentiment_score, 1)
+    coverage = .65 + (.25 if breadth_available else 0) + (.10 if sentiment_available else 0)
+    regime = 'aggressive' if score >= 65 else 'defensive' if score <= 40 else 'balanced'
+    return {
+        'regime':regime, 'score':score, 'risk_multiplier':{'aggressive':1.0, 'balanced':.85, 'defensive':.65}[regime],
+        'confidence':round(coverage, 2), 'data_coverage':round(coverage, 2),
+        'signals':{
+            'trend':{'score':trend_score, 'above_ma200':technical['price'] > technical['sma200'], 'ma50_above_ma200':technical['sma50'] > technical['sma200'], 'as_of':history.get('as_of')},
+            'volatility':{'score':round(vol_score, 1), 'annualized_20d':round(current20, 4) if current20 is not None else None, 'annualized_60d':round(current60, 4) if current60 is not None else None, 'historical_percentile':round(rank, 3) if rank is not None else None},
+            'breadth':{'score':round(breadth_score, 1), 'rise':rise, 'fall':fall, 'flat':flat, 'ratio':round(breadth_ratio, 3) if breadth_ratio is not None else None},
+            'sentiment':{'score':round(sentiment_score, 1), 'large_net_flow':(sentiment or {}).get('large_net_flow'), 'market_temperature':(sentiment or {}).get('market_temperature')},
+        },
+        'quality':{'warnings':[message for condition, message in ((not breadth_available, '市场宽度暂缺，按中性分处理'), (not sentiment_available, '市场温度与资金流暂缺，按中性分处理')) if condition]},
+        'market':market,
+    }
+
+def get_market_regime(force=False):
+    if not force and MARKET_CACHE['data'] and time.time() - MARKET_CACHE['saved_at'] < 15 * 60:
+        return MARKET_CACHE['data']
+    policy = investment_policy()
+    markets = {}
+    for market, benchmark in policy['benchmark_by_market'].items():
+        try:
+            history = fetch_symbol_history(benchmark, force=force)
+            markets[market] = market_regime_from_history(history, market)
+        except Exception as exc:
+            markets[market] = {'regime':'unavailable', 'score':None, 'risk_multiplier':None, 'confidence':0, 'data_coverage':0, 'signals':{}, 'quality':{'warnings':[str(exc)]}, 'market':market}
+    available = [item for item in markets.values() if item.get('score') is not None]
+    weighted_score = statistics.fmean(item['score'] for item in available) if available else None
+    data = {
+        'model_version':'market-regime-v1', 'model_status':'shadow', 'markets':markets,
+        'portfolio_weighted_regime':('aggressive' if weighted_score is not None and weighted_score >= 65 else 'defensive' if weighted_score is not None and weighted_score <= 40 else 'balanced' if weighted_score is not None else 'unavailable'),
+        'policy_version':policy['version'], 'source':'longbridge+public_history_fallback', 'fetched_at':iso_now(),
+    }
+    MARKET_CACHE.update({'saved_at':time.time(), 'data':data})
+    return data
 
 def fetch_symbol_history(symbol, force=False):
     symbol = normalized_symbol(symbol)
@@ -599,6 +732,146 @@ def get_account_snapshot(force=False):
     cache.update({'saved_at':time.time(), 'snapshot':snapshot})
     return snapshot
 
+def pearson(left, right):
+    if len(left) != len(right) or len(left) < 2:
+        return None
+    left_mean, right_mean = statistics.fmean(left), statistics.fmean(right)
+    numerator = sum((a-left_mean) * (b-right_mean) for a, b in zip(left, right))
+    denominator = math.sqrt(sum((a-left_mean)**2 for a in left) * sum((b-right_mean)**2 for b in right))
+    return numerator / denominator if denominator else None
+
+def portfolio_risk_from_histories(snapshot, histories, policy=None):
+    policy = policy or investment_policy()
+    positions = snapshot.get('positions') or []
+    net_assets = as_float((snapshot.get('account') or {}).get('net_assets_cny'))
+    signature_payload = {
+        'policy_version':policy.get('version'),
+        'positions':[(item.get('symbol'), item.get('quantity'), item.get('price'), item.get('fx_to_cny')) for item in positions],
+    }
+    snapshot_id = hashlib.sha256(json.dumps(signature_payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
+    warnings, returns_by_symbol = [], {}
+    covered_value = 0.0
+    for item in positions:
+        symbol = normalized_symbol(item.get('symbol'))
+        history = histories.get(symbol)
+        if history and len(history.get('points') or []) >= 60:
+            returns_by_symbol[symbol] = daily_returns(history['points'])
+            covered_value += abs(as_float(item.get('market_value_cny')))
+        else:
+            warnings.append(f'{symbol} 历史行情不足，未参与协方差计算')
+    gross_value = sum(abs(as_float(item.get('market_value_cny'))) for item in positions)
+    net_value = sum(as_float(item.get('market_value_cny')) for item in positions)
+    weights = {normalized_symbol(item.get('symbol')):as_float(item.get('market_value_cny')) / net_assets for item in positions if net_assets}
+    covered_symbols = [symbol for symbol in weights if symbol in returns_by_symbol]
+    common_dates = sorted(set.intersection(*(set(returns_by_symbol[symbol]) for symbol in covered_symbols))) if covered_symbols else []
+    common_dates = common_dates[-252:]
+    portfolio_returns = [sum(weights[symbol] * returns_by_symbol[symbol][day] for symbol in covered_symbols) for day in common_dates]
+    portfolio_vol = statistics.pstdev(portfolio_returns) * math.sqrt(252) if len(portfolio_returns) > 1 else None
+    var95_threshold = percentile(portfolio_returns, .05)
+    var99_threshold = percentile(portfolio_returns, .01)
+    tail95 = [value for value in portfolio_returns if var95_threshold is not None and value <= var95_threshold]
+    historical_var95 = max(0.0, -var95_threshold) if var95_threshold is not None else None
+    historical_var99 = max(0.0, -var99_threshold) if var99_threshold is not None else None
+    cvar95 = max(0.0, -statistics.fmean(tail95)) if tail95 else None
+    wealth, peak, max_dd, peak_date, trough_date, running_peak_date = 1.0, 1.0, 0.0, None, None, None
+    for day, value in zip(common_dates, portfolio_returns):
+        wealth *= 1 + value
+        if wealth > peak:
+            peak, running_peak_date = wealth, day
+        drawdown = wealth / peak - 1 if peak else 0
+        if drawdown < max_dd:
+            max_dd, peak_date, trough_date = drawdown, running_peak_date, day
+    correlations, diversifiers = [], []
+    for index, left_symbol in enumerate(covered_symbols):
+        for right_symbol in covered_symbols[index+1:]:
+            dates = sorted(set(returns_by_symbol[left_symbol]) & set(returns_by_symbol[right_symbol]))
+            item = {'left':left_symbol, 'right':right_symbol}
+            for window in (60, 252):
+                sample = dates[-window:]
+                value = pearson([returns_by_symbol[left_symbol][day] for day in sample], [returns_by_symbol[right_symbol][day] for day in sample])
+                item[f'correlation_{window}d'] = round(value, 3) if value is not None else None
+                item[f'sample_days_{window}d'] = len(sample)
+            if item['correlation_60d'] is not None and item['correlation_60d'] > .75:
+                correlations.append(item)
+            elif item['correlation_60d'] is not None and item['correlation_60d'] < -.50:
+                diversifiers.append(item)
+    risk_contributions = []
+    if len(common_dates) > 1 and covered_symbols:
+        vectors = {symbol:[returns_by_symbol[symbol][day] for day in common_dates] for symbol in covered_symbols}
+        covariance = {}
+        for left in covered_symbols:
+            for right in covered_symbols:
+                left_mean, right_mean = statistics.fmean(vectors[left]), statistics.fmean(vectors[right])
+                covariance[left, right] = sum((a-left_mean)*(b-right_mean) for a, b in zip(vectors[left], vectors[right])) / len(common_dates)
+        portfolio_variance = sum(weights[left] * weights[right] * covariance[left, right] for left in covered_symbols for right in covered_symbols)
+        for symbol in covered_symbols:
+            marginal = sum(covariance[symbol, other] * weights[other] for other in covered_symbols)
+            contribution = weights[symbol] * marginal / portfolio_variance if portfolio_variance > 0 else 0
+            risk_contributions.append({'symbol':symbol, 'weight_pct':round(weights[symbol]*100, 2), 'variance_contribution_pct':round(contribution*100, 2)})
+        risk_contributions.sort(key=lambda item:abs(item['variance_contribution_pct']), reverse=True)
+    def grouped_weights(key_fn):
+        grouped = {}
+        for item in positions:
+            key = key_fn(item)
+            grouped[key] = grouped.get(key, 0) + as_float(item.get('market_value_cny')) / (net_assets or 1)
+        return [{'key':key, 'weight_pct':round(value*100, 2)} for key, value in sorted(grouped.items(), key=lambda pair:abs(pair[1]), reverse=True)]
+    position_weights = sorted((abs(as_float(item.get('market_value_cny'))) / (net_assets or 1) for item in positions), reverse=True)
+    sector_weights = grouped_weights(lambda item:str(item.get('sector') or '未分类'))
+    company_weights = grouped_weights(lambda item:company_group_symbol(item.get('symbol')))
+    currency_weights = grouped_weights(lambda item:str(item.get('currency') or '未知'))
+    rebalance = {'status':'not_configured', 'drift':[]}
+    if policy.get('target_bands'):
+        rebalance = {'status':'calculated', 'drift':[]}
+        for band in policy['target_bands']:
+            current = next((item['weight_pct']/100 for item in grouped_weights(lambda item:normalized_symbol(item.get('symbol'))) if item['key'] == normalized_symbol(band.get('key'))), 0) if band.get('type') == 'symbol' else None
+            rebalance['drift'].append({'key':band.get('key'), 'type':band.get('type'), 'current_pct':round(current*100, 2) if current is not None else None, 'target_pct':round(as_float(band.get('target_pct'))*100, 2), 'status':'unsupported_group' if current is None else 'below' if current < as_float(band.get('min_pct')) else 'above' if current > as_float(band.get('max_pct')) else 'within'})
+    if any(item.get('market') == 'HK' for item in positions) and any(item.get('market') != 'HK' for item in positions):
+        warnings.append('美港股收盘时点不同，跨市场相关性存在时差偏差')
+    if positions:
+        warnings.append('暂无历史汇率序列：波动率基于本币股票收益与当前权重，未覆盖汇率历史风险')
+    return {
+        'model_version':'portfolio-risk-v1', 'model_status':'shadow', 'policy_version':policy['version'],
+        'policy_status':'confirmed' if policy.get('confirmed_by_user') else 'unconfirmed', 'snapshot_id':snapshot_id,
+        'risk_currency':policy.get('base_currency', 'CNY'), 'fx_history_covered':False,
+        'metrics':{
+            'portfolio_vol_annualized':round(portfolio_vol, 4) if portfolio_vol is not None else None,
+            'historical_var_95_1d':round(historical_var95, 4) if historical_var95 is not None else None,
+            'historical_var_99_1d':round(historical_var99, 4) if historical_var99 is not None else None,
+            'historical_cvar_95_1d':round(cvar95, 4) if cvar95 is not None else None,
+            'max_drawdown_252d':round(max_dd, 4) if portfolio_returns else None,
+            'max_drawdown_peak_date':peak_date, 'max_drawdown_trough_date':trough_date,
+            'gross_exposure_pct':round(gross_value/(net_assets or 1)*100, 2), 'net_exposure_pct':round(net_value/(net_assets or 1)*100, 2),
+            'cash_pct':round(as_float((snapshot.get('account') or {}).get('total_cash_cny'))/(net_assets or 1)*100, 2),
+        },
+        'risk_contributions':risk_contributions, 'correlation_risks':correlations, 'potential_diversifiers':diversifiers,
+        'concentration':{'top1_pct':round((position_weights[:1] or [0])[0]*100, 2), 'top5_pct':round(sum(position_weights[:5])*100, 2), 'hhi':round(sum(value*value for value in position_weights), 4), 'sector_weights':sector_weights, 'company_group_weights':company_weights, 'currency_weights':currency_weights},
+        'stress_tests':[
+            {'scenario':'科技与AI相关持仓下跌20%', 'estimated_portfolio_impact_pct':round(-.20 * sum(item['weight_pct'] for item in sector_weights if item['key'] in {'科技','半导体','AI'}), 2)},
+            {'scenario':'美元及港币兑人民币下跌5%', 'estimated_portfolio_impact_pct':round(-.05 * sum(item['weight_pct'] for item in currency_weights if item['key'] in {'USD','HKD'}), 2)},
+        ],
+        'rebalance':rebalance,
+        'quality':{'history_days':len(common_dates), 'position_coverage_pct':round(covered_value/(gross_value or 1)*100, 2), 'fx_history_covered':False, 'cross_market_lag_warning':any('收盘时点' in item for item in warnings), 'warnings':warnings},
+        'source':'longbridge_account+public_history_fallback', 'fetched_at':iso_now(),
+    }
+
+def get_portfolio_risk(force=False, snapshot=None):
+    snapshot = snapshot or get_account_snapshot(force=force)
+    policy = investment_policy()
+    signature = hashlib.sha256(json.dumps({'policy':policy, 'positions':[(item.get('symbol'), item.get('quantity'), item.get('price'), item.get('fx_to_cny')) for item in snapshot.get('positions', [])]}, sort_keys=True).encode()).hexdigest()
+    if not force and PORTFOLIO_RISK_CACHE['data'] and PORTFOLIO_RISK_CACHE['signature'] == signature and time.time() - PORTFOLIO_RISK_CACHE['saved_at'] < 30 * 60:
+        return PORTFOLIO_RISK_CACHE['data']
+    histories = {}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(fetch_symbol_history, item['symbol'], force):normalized_symbol(item['symbol']) for item in snapshot.get('positions', [])}
+        for future in as_completed(futures):
+            try:
+                histories[futures[future]] = future.result()
+            except Exception:
+                continue
+    data = portfolio_risk_from_histories(snapshot, histories, policy)
+    PORTFOLIO_RISK_CACHE.update({'saved_at':time.time(), 'signature':signature, 'data':data})
+    return data
+
 def company_group_symbol(symbol):
     return DISCOVERY_ALIASES.get(normalized_symbol(symbol), normalized_symbol(symbol))
 
@@ -648,6 +921,64 @@ def score_discovery_candidate(closes, sector_weight=0.0):
         'volatility_20d': volatility, 'drawdown_120d': drawdown,
         'sector_weight': max(0.0, sector_weight), 'diversification_score': diversification,
         'eligible': price > sma200 and mom60 > 0 and drawdown > -.30 and volatility < .65,
+    }
+
+def deterministic_price_plan(technical):
+    price = max(as_float(technical.get('price')), .01)
+    atr = max(as_float(technical.get('atr_14d')), price * .02)
+    sma20, sma50 = as_float(technical.get('sma20'), price), as_float(technical.get('sma50'), price)
+    entry = min(price, max(min(sma20, sma50), price - 1.5 * atr))
+    structural_stop = min(sma50 - atr, price - 2 * atr)
+    stop = max(.01, min(structural_stop, entry - atr))
+    target = price + 2 * max(price - stop, atr)
+    return {
+        'entry_price':round(entry, 2), 'stop_loss':round(stop, 2), 'price_target':round(target, 2),
+        'reward_risk_ratio':round((target-price)/max(.01, price-stop), 2),
+        'basis':{'entry':'MA20/MA50与1.5倍ATR支撑区间', 'stop':'MA50结构位与2倍ATR取更保守值', 'target':'当前价向上2倍初始风险距离'},
+    }
+
+def factor_analysis_from_history(symbol, history, market=None):
+    points = history.get('points') or []
+    technical = history.get('technical') or technical_snapshot(points)
+    market = market or ('HK' if normalized_symbol(symbol).endswith('.HK') else 'US')
+    closes = [as_float(item.get('close')) for item in points if as_float(item.get('close')) > 0]
+    simple_returns = [closes[index]/closes[index-1]-1 for index in range(1, len(closes))]
+    annualized_vol = lambda window:statistics.pstdev(simple_returns[-min(window, len(simple_returns)):])*math.sqrt(252) if len(simple_returns) > 1 else None
+    downside = [value for value in simple_returns[-min(252, len(simple_returns)):] if value < 0]
+    downside_vol = statistics.pstdev(downside)*math.sqrt(252) if len(downside) > 1 else None
+    momentum_60_ex_last5 = closes[-6] / closes[-66] - 1 if len(closes) >= 66 else None
+    distance_from_52w_high = closes[-1] / max(closes[-min(252, len(closes)):]) - 1
+    momentum_raw = {
+        'return_20d':technical.get('momentum_20d'), 'return_60d':technical.get('momentum_60d'),
+        'return_120d':technical.get('momentum_120d'), 'above_ma200':technical.get('price', 0) > technical.get('sma200', 0),
+        'ma50_above_ma200':technical.get('sma50', 0) > technical.get('sma200', 0),
+        'return_60d_ex_last5':round(momentum_60_ex_last5, 6) if momentum_60_ex_last5 is not None else None,
+        'distance_from_52w_high':round(distance_from_52w_high, 6),
+    }
+    low_vol_raw = {
+        'volatility_60d':round(annualized_vol(60), 6) if annualized_vol(60) is not None else None,
+        'volatility_252d':round(annualized_vol(252), 6) if annualized_vol(252) is not None else None,
+        'downside_volatility_252d':round(downside_vol, 6) if downside_vol is not None else None,
+        'max_drawdown_252d':technical.get('max_drawdown_period'),
+    }
+    positive_trend = bool(momentum_raw['above_ma200'] and momentum_raw['ma50_above_ma200'] and as_float(momentum_raw['return_60d']) > 0)
+    negative_trend = bool(not momentum_raw['above_ma200'] and as_float(momentum_raw['return_60d']) < 0)
+    warnings = ['尚未接入可审计的估值、质量和一致预期快照，三个因子按缺失处理', '当前没有合格横截面，因此不生成伪造的百分位或Z分数']
+    coverage = .40
+    return {
+        'symbol':normalized_symbol(symbol), 'model_version':'multifactor-v1.0.0', 'model_status':'shadow', 'snapshot_date':history.get('as_of'),
+        'universe':{'market':market, 'name':'.SPX.US' if market == 'US' else 'HSI/HSTECH', 'size':None, 'status':'cross_section_pending'},
+        'factors':{
+            'momentum':{'research_weight':.25, 'available':True, 'raw':momentum_raw, 'z_score':None, 'percentile':None, 'contribution':0},
+            'value':{'research_weight':.20, 'available':False, 'raw':{}, 'z_score':None, 'percentile':None, 'contribution':0},
+            'quality':{'research_weight':.25, 'available':False, 'raw':{}, 'z_score':None, 'percentile':None, 'contribution':0},
+            'low_volatility':{'research_weight':.15, 'available':True, 'raw':low_vol_raw, 'z_score':None, 'percentile':None, 'contribution':0},
+            'expectation_revision':{'research_weight':.15, 'available':False, 'raw':{}, 'z_score':None, 'percentile':None, 'contribution':0},
+        },
+        'composite':{'signal':'neutral', 'technical_observation':'positive' if positive_trend else 'negative' if negative_trend else 'mixed', 'signal_percentile':None, 'confidence':round(coverage*.5, 2), 'data_coverage':coverage, 'decision_weight':0, 'reason':'覆盖率低于70%，且模型仍处于shadow，不能影响最终持仓建议'},
+        'flow_overlay':{'available':False, 'score_effect':0}, 'price_plan':deterministic_price_plan(technical),
+        'quality':{'missing_fields':['valuation','quality_financials','analyst_expectation_revision'], 'stale_fields':[], 'warnings':warnings},
+        'source':history.get('source', 'public_history_fallback'), 'fetched_at':iso_now(),
     }
 
 def build_discovery_recommendation(meta, history, sector_weight=0.0):
@@ -725,6 +1056,7 @@ def fallback_analysis(body, risk_flags):
     ret = as_float(body.get('return_pct'))
     sector = str(body.get('sector', '未知'))
     technical = body.get('technical_data') or {}
+    price_plan = deterministic_price_plan(technical) if technical else {'entry_price':round(price*.96, 2), 'stop_loss':round(price*.90, 2), 'price_target':round(price*1.12, 2)}
     if sector == '杠杆ETF' or ret <= -40:
         rating = 'Sell'
     elif technical.get('trend') == '下降' and as_float(technical.get('momentum_60d')) < 0:
@@ -735,7 +1067,7 @@ def fallback_analysis(body, risk_flags):
         rating = 'Hold'
     return {
         'rating': rating,
-        'confidence': 55,
+        'confidence': 45,
         'executive_summary': f"当前收益率 {ret:.1f}%，真实日线趋势为{technical.get('trend', '未知')}。在完整基本面证据接入前，先执行仓位纪律。",
         'bull_case': [
             '当前仍有可用购买力，可以分批执行而不是一次性交易。',
@@ -743,17 +1075,17 @@ def fallback_analysis(body, risk_flags):
         ],
         'bear_case': [
             '当前分析只使用持仓、价格和组合权重，尚未验证最新基本面。',
-            '模型示意曲线不是真实历史 K 线，不能单独作为买卖依据。',
+            '历史曲线虽为真实日线，但缺少完整基本面与预期证据，不能单独作为买卖依据。',
         ],
         'position_sizing': '维持或降低现有仓位；新增仓位需通过集中度上限校验。',
-        'entry_price': round(price * 0.96, 2),
-        'stop_loss': round(price * 0.90, 2),
-        'price_target': round(price * 1.12, 2),
+        'entry_price': price_plan['entry_price'],
+        'stop_loss': price_plan['stop_loss'],
+        'price_target': price_plan['price_target'],
         'time_horizon': '1-3个月观察',
         'invalidation_conditions': ['跌破风险价位且投资逻辑没有新增证据支持', '公司或行业基本面出现实质恶化'],
         'change_reason': '首次生成建议，暂无上一条决策可比较。',
         'new_evidence': [],
-        'source': 'rule_fallback',
+        'source': 'deterministic_policy_engine',
     }
 
 def normalize_analysis(raw, body, risk_flags):
@@ -985,7 +1317,7 @@ def health():
         credential('LONGBRIDGE_APP_SECRET', 'LONGPORT_APP_SECRET'),
         credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN'),
     ))
-    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/analysis']})
+    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/investment-policy', '/market', '/portfolio-risk', '/factor-analysis', '/analysis']})
 
 @app.route('/session', methods=['POST', 'OPTIONS'])
 def create_session():
@@ -1008,6 +1340,55 @@ def account():
     except Exception as exc:
         app.logger.error('account_snapshot_failed: %s', exc)
         return jsonify({'error':'实时账户数据获取失败，已阻断持仓展示与个股分析', 'detail':str(exc), 'source':'longbridge_openapi'}), 503
+
+@app.route('/investment-policy', methods=['GET', 'PUT', 'OPTIONS'])
+def policy_route():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    if not request_authorized():
+        return auth_error()
+    if request.method == 'PUT':
+        supplied = request.get_json(force=True, silent=True) or {}
+        errors = validate_policy(supplied)
+        if errors:
+            return jsonify({'error':'投资策略配置校验失败', 'details':errors, 'source':'investment_policy', 'retryable':False, 'fetched_at':iso_now()}), 400
+        return jsonify({'error':'FC 无持久化配置存储，拒绝把策略写入临时实例；请将已确认配置写入 INVESTMENT_POLICY_JSON 后重新部署', 'source':'investment_policy', 'retryable':False, 'fetched_at':iso_now()}), 409
+    policy = investment_policy()
+    return jsonify({**policy, 'provisional':not policy.get('confirmed_by_user'), 'storage':'fc_environment', 'fetched_at':iso_now()})
+
+@app.route('/market')
+def market():
+    if not request_authorized():
+        return auth_error()
+    try:
+        return jsonify(get_market_regime(force=request.args.get('force') == '1'))
+    except Exception as exc:
+        return jsonify({'error':'市场环境计算失败', 'detail':str(exc), 'source':'market_regime', 'retryable':True, 'fetched_at':iso_now()}), 503
+
+@app.route('/portfolio-risk')
+def portfolio_risk():
+    if not request_authorized():
+        return auth_error()
+    try:
+        snapshot = get_account_snapshot(force=request.args.get('force') == '1')
+        if not snapshot.get('complete'):
+            return jsonify({'error':'账户快照不完整，已阻断组合风险计算', 'source':'longbridge_openapi', 'retryable':True, 'fetched_at':iso_now(), 'missing_prices':snapshot.get('missing_prices'), 'missing_currencies':snapshot.get('missing_currencies')}), 503
+        return jsonify(get_portfolio_risk(force=request.args.get('force') == '1', snapshot=snapshot))
+    except Exception as exc:
+        return jsonify({'error':'组合风险计算失败', 'detail':str(exc), 'source':'portfolio_risk', 'retryable':True, 'fetched_at':iso_now()}), 503
+
+@app.route('/factor-analysis')
+def factor_analysis():
+    if not request_authorized():
+        return auth_error()
+    symbol = normalized_symbol(request.args.get('symbol'))
+    if not symbol:
+        return jsonify({'error':'缺少symbol参数', 'source':'factor_model', 'retryable':False, 'fetched_at':iso_now()}), 400
+    try:
+        history_data = fetch_symbol_history(symbol, force=request.args.get('force') == '1')
+        return jsonify(factor_analysis_from_history(symbol, history_data))
+    except Exception as exc:
+        return jsonify({'error':'因子影子分析失败', 'detail':str(exc), 'symbol':symbol, 'source':'factor_model', 'retryable':True, 'fetched_at':iso_now()}), 503
 
 @app.route('/recommendations', methods=['POST', 'OPTIONS'])
 def recommendations():
@@ -1042,6 +1423,13 @@ def recommendations():
         if candidate:
             ranked.append(candidate)
     ranked.sort(key=lambda item: (item['score'], item['diversification_score'], item['momentum_60d']), reverse=True)
+    policy = investment_policy()
+    if not policy.get('confirmed_by_user'):
+        for item in ranked:
+            item['research_position_cap_pct'] = item.pop('target_position_pct', None)
+            item['target_position_pct'] = None
+            item['position_sizing'] = '投资策略尚未确认；当前仅列入研究候选，不生成建仓比例。'
+            item['action_steps'] = ['继续观察真实日线和基本面数据', '等待多因子覆盖率与影子验证达标', '确认投资策略后再计算目标仓位']
     for index, item in enumerate(ranked[:5], 1):
         item['rank'] = index
     if not ranked:
@@ -1049,6 +1437,7 @@ def recommendations():
     return jsonify({
         'recommendations': ranked[:5], 'universe_size': len(DISCOVERY_UNIVERSE),
         'eligible_size': len(ranked), 'method_version':'discovery_v1',
+        'model_status':'shadow', 'policy_status':'confirmed' if policy.get('confirmed_by_user') else 'unconfirmed',
         'generated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'disclaimer':'量化候选仅供研究，不构成收益承诺或自动交易指令。',
     })
@@ -1117,19 +1506,33 @@ def analysis():
         'price_updated_at':snapshot['fetched_at'], 'account_verified':True,
         'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'],
     })
+    factor_result = factor_analysis_from_history(symbol, history_data)
+    try:
+        market_result = get_market_regime()
+    except Exception as exc:
+        market_result = {'model_version':'market-regime-v1', 'model_status':'shadow', 'error':str(exc)}
+    try:
+        portfolio_risk_result = get_portfolio_risk(snapshot=snapshot)
+    except Exception as exc:
+        portfolio_risk_result = {'model_version':'portfolio-risk-v1', 'model_status':'shadow', 'error':str(exc), 'snapshot_id':None}
     risk_flags = build_risk_flags(body)
+    result = fallback_analysis(body, risk_flags)
+    result.update(factor_result['price_plan'])
+    narrative = {
+        'executive_summary':result['executive_summary'], 'bull_case':result['bull_case'], 'bear_case':result['bear_case'],
+        'counterarguments':[], 'invalidation_conditions':result['invalidation_conditions'],
+        'data_limitations':factor_result['quality']['warnings'], 'change_explanation':result['change_reason'],
+    }
     key = os.getenv('DEEPSEEK_API_KEY', '')
-    if not key:
-        result = fallback_analysis(body, risk_flags)
-    else:
-        prompt = f"""你是个人投资组合的研究经理。只根据下面提供的数据工作，不得编造实时新闻、财报、估值或历史K线。
-目标年化收益为20%，但风险纪律优先于收益目标。请同时给出多头和空头证据，并输出严格 JSON，不要使用 Markdown。
-除 rating 的固定枚举值和股票代码外，所有分析文字必须使用简体中文回复，不得输出英文操作建议。
-rating 必须是 Buy、Overweight、Hold、Underweight、Sell 之一。
-价格必须使用标的原始报价币种。confidence 为0到100整数。
-如果建议与上一条不同，必须在 change_reason 中说明变化原因，并在 new_evidence 数组中列出本次输入里真实发生变化的价格、收益率、仓位或风险证据；不得把未提供的新闻或财报当作新证据。
-JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case(数组), position_sizing, entry_price, stop_loss, price_target, time_horizon, invalidation_conditions(数组), change_reason, new_evidence(数组)。
-持仓与真实技术数据：{json.dumps(body, ensure_ascii=False)}
+    if key:
+        prompt = f"""你是个人投资组合的反方研究员。最终评级、仓位和价格已经由确定性程序计算，你无权修改。
+只根据下面提供的数据，用简体中文解释并主动寻找反例；不得编造新闻、财报、估值、目标价或历史行情。
+输出严格JSON且不要Markdown。字段只能是：executive_summary, bull_case(数组), bear_case(数组), counterarguments(数组), invalidation_conditions(数组), data_limitations(数组), change_explanation。
+确定性最终评级：{result['rating']}。允许动作说明：{result['position_sizing']}。
+实时持仓和技术数据：{json.dumps(body, ensure_ascii=False)}
+市场环境影子结果：{json.dumps(market_result, ensure_ascii=False)}
+组合风险影子结果：{json.dumps(portfolio_risk_result, ensure_ascii=False)}
+因子影子结果：{json.dumps(factor_result, ensure_ascii=False)}
 硬风控提示：{json.dumps(risk_flags, ensure_ascii=False)}"""
         req = urllib.request.Request('https://api.deepseek.com/v1/chat/completions',
             data=json.dumps({'model':'deepseek-chat','messages':[{'role':'user','content':prompt}],
@@ -1140,18 +1543,35 @@ JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case
             content = resp['choices'][0]['message']['content'] if resp.get('choices') else '{}'
             start, end = content.find('{'), content.rfind('}')
             parsed = json.loads(content[start:end+1]) if start >= 0 and end > start else {}
-            result = normalize_analysis(parsed, body, risk_flags)
+            summary = str(parsed.get('executive_summary') or '').strip()
+            change = str(parsed.get('change_explanation') or '').strip()
+            narrative = {
+                'executive_summary':summary if has_chinese(summary) else result['executive_summary'],
+                'bull_case':chinese_list(parsed.get('bull_case'), result['bull_case']),
+                'bear_case':chinese_list(parsed.get('bear_case'), result['bear_case']),
+                'counterarguments':chinese_list(parsed.get('counterarguments'), []),
+                'invalidation_conditions':chinese_list(parsed.get('invalidation_conditions'), result['invalidation_conditions']),
+                'data_limitations':chinese_list(parsed.get('data_limitations'), factor_result['quality']['warnings']),
+                'change_explanation':change if has_chinese(change) else result['change_reason'],
+            }
+            result['source'] = 'deterministic_policy_engine+deepseek_narrative'
         except Exception:
-            result = fallback_analysis(body, risk_flags)
-            result['source'] = 'rule_fallback_after_error'
+            result['source'] = 'deterministic_policy_engine+narrative_fallback'
     result = validate_decision(result, body, risk_flags)
+    policy = investment_policy()
+    if not policy.get('confirmed_by_user'):
+        result['target_position_pct'] = None
+        result['position_sizing'] = f"当前仓位约 {as_float((body.get('portfolio_context') or {}).get('position_weight'))*100:.1f}%；投资策略尚未确认，本次只给出持有/减仓风险判断，不生成目标仓位。"
     result.update({
         'symbol': str(body.get('symbol', 'UNKNOWN')),
-        'decision_version': 2,
+        'decision_version': 3, 'rating_source':'deterministic_policy_engine',
+        'desired_weight':None, 'binding_constraint':'policy_not_configured' if not policy.get('confirmed_by_user') else 'shadow_models_not_advisory',
         'risk_flags': risk_flags,
         'data_scope': 'verified_live_longbridge_position_price_portfolio_and_real_daily_technical',
         'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'],
-        'generated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'factor_analysis':factor_result, 'market_regime':market_result, 'portfolio_risk':portfolio_risk_result, 'narrative':narrative,
+        'audit':{'data_snapshot_id':portfolio_risk_result.get('snapshot_id'), 'factor_model_version':factor_result['model_version'], 'factor_model_status':factor_result['model_status'], 'risk_model_version':portfolio_risk_result.get('model_version'), 'policy_version':policy['version'], 'consistency':result.get('consistency', {}).get('status')},
+        'generated_at': iso_now(),
     })
     return jsonify(result)
 

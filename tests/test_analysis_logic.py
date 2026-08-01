@@ -4,6 +4,7 @@ import calendar
 import hashlib
 import hmac
 import math
+import json
 import os
 import statistics
 import time
@@ -26,6 +27,10 @@ def load_logic():
         'technical_snapshot',
         'utc_timestamp', 'month_end_dates', 'max_drawdown_from_returns',
         'classify_cash_flow', 'xirr',
+        'iso_now', 'investment_policy', 'percentile', 'daily_returns',
+        'realized_volatility_series', 'market_regime_from_history',
+        'pearson', 'company_group_symbol', 'portfolio_risk_from_histories',
+        'deterministic_price_plan', 'factor_analysis_from_history',
     }
     module = ast.Module(
         body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names],
@@ -47,6 +52,13 @@ def load_logic():
         'datetime': datetime,
         'timezone': timezone,
         'SECTOR_BY_SYMBOL': {'AAPL':'科技', '0700.HK':'通信服务'},
+        'POLICY_DEFAULT': {
+            'version':1, 'base_currency':'CNY', 'annual_return_objective':.2,
+            'benchmark_by_market':{'US':'SPY.US','HK':'HSI.HK'},
+            'risk':{}, 'limits':{}, 'target_bands':[], 'confirmed_by_user':False, 'updated_at':None,
+        },
+        'DISCOVERY_ALIASES': {'BABA':'ALIBABA', '9988.HK':'ALIBABA'},
+        'json': json,
     }
     exec(compile(module, 'app.py', 'exec'), namespace)
     return namespace
@@ -233,6 +245,51 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertEqual(snapshot['positions'][0]['cost_price'],150)
         self.assertFalse(snapshot['complete'])
         self.assertIn('prices',snapshot['source_errors'])
+
+    def test_market_regime_missing_optional_signals_stays_auditable(self):
+        points=[]
+        for index in range(260):
+            close=100+index*.2+math.sin(index/8)
+            points.append({'date':f'2026-{index:03d}','open':close-.2,'close':close,'high':close+.5,'low':close-.6,'volume':1000})
+        history={'points':points,'as_of':'2026-07-31'}
+        result=self.logic['market_regime_from_history'](history,'US')
+        self.assertEqual(result['data_coverage'],.65)
+        self.assertEqual(result['signals']['breadth']['score'],12.5)
+        self.assertEqual(result['signals']['sentiment']['score'],5.0)
+        self.assertTrue(result['quality']['warnings'])
+
+    def test_factor_shadow_never_influences_decision(self):
+        points=[]
+        for index in range(250):
+            close=80+index*.3
+            points.append({'date':str(index),'open':close-.1,'close':close,'high':close+.4,'low':close-.5,'volume':1000})
+        history={'points':points,'technical':self.logic['technical_snapshot'](points),'as_of':'2026-07-31','source':'test'}
+        result=self.logic['factor_analysis_from_history']('AAPL.US',history)
+        self.assertEqual(result['model_status'],'shadow')
+        self.assertEqual(result['composite']['decision_weight'],0)
+        self.assertEqual(result['composite']['signal'],'neutral')
+        self.assertEqual(result['composite']['data_coverage'],.4)
+        self.assertTrue(all(item['contribution']==0 for item in result['factors'].values()))
+
+    def test_portfolio_risk_metrics_and_contributions_are_consistent(self):
+        points_a=[];points_b=[]
+        for index in range(260):
+            close_a=100*(1.001**index)*(1+.01*math.sin(index/7))
+            close_b=80*(1.0007**index)*(1+.008*math.sin(index/7))
+            day=f'2026-{index:03d}'
+            points_a.append({'date':day,'close':close_a})
+            points_b.append({'date':day,'close':close_b})
+        snapshot={'positions':[
+            {'symbol':'AAPL','market_value_cny':400,'sector':'科技','currency':'USD','market':'US','quantity':1,'price':100,'fx_to_cny':7},
+            {'symbol':'0700.HK','market_value_cny':300,'sector':'通信服务','currency':'HKD','market':'HK','quantity':1,'price':80,'fx_to_cny':.9},
+        ],'account':{'net_assets_cny':1000,'total_cash_cny':300}}
+        histories={'AAPL':{'points':points_a},'0700.HK':{'points':points_b}}
+        result=self.logic['portfolio_risk_from_histories'](snapshot,histories,self.logic['investment_policy']())
+        self.assertIsNotNone(result['metrics']['historical_var_95_1d'])
+        self.assertEqual(result['rebalance']['status'],'not_configured')
+        self.assertAlmostEqual(sum(item['variance_contribution_pct'] for item in result['risk_contributions']),100,places=1)
+        self.assertTrue(result['quality']['cross_market_lag_warning'])
+        self.assertFalse(result['fx_history_covered'])
 
 
 if __name__ == '__main__':

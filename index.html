@@ -141,7 +141,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 @media(min-width:769px){
   html{min-height:100%;overflow-x:hidden;overflow-y:auto}
   body{min-width:0;min-height:100%;height:auto;overflow-x:hidden;overflow-y:auto}
-  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 246px minmax(246px,1fr) auto;grid-template-areas:'header header header' 'sector hero alloc' 'us trend rank' 'hk . perf' 'rec rec rec';gap:12px;padding:0 12px 12px;overflow:visible}
+  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 246px minmax(246px,1fr) auto auto;grid-template-areas:'header header header' 'sector hero alloc' 'us trend rank' 'hk . perf' 'risk risk risk' 'rec rec rec';gap:12px;padding:0 12px 12px;overflow:visible}
   #header{position:relative;grid-area:header;inset:auto;width:auto;height:auto;padding:0 12px}
   #fs-btn{top:22px;right:12px}
   #hero{position:relative;grid-area:hero;inset:auto;width:auto;height:auto;min-width:0}
@@ -153,7 +153,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #perf-panel{position:relative;grid-area:perf;inset:auto;width:auto;height:auto}
   #hk-panel{position:relative;grid-area:hk;inset:auto;width:auto;height:auto;min-height:246px;overflow-y:auto}
   #rec-panel{position:relative;grid-area:rec;inset:auto;width:auto;height:auto}
-  #health-panel{display:none!important}
+  #health-panel{display:block!important;position:relative!important;grid-area:risk;inset:auto!important;width:auto!important;height:auto!important;min-height:300px}
   #particles{inset:0;width:100%;height:100%;overflow:hidden}
 }
 @media(min-width:769px) and (max-width:1200px){
@@ -169,7 +169,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #stage{min-height:100vh;padding-bottom:16px}
 }
 @media(max-width:900px) and (min-width:769px){
-  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px minmax(246px,1fr) auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'us rank' 'hk perf' 'rec rec'}
+  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px minmax(246px,1fr) auto auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'us rank' 'hk perf' 'risk risk' 'rec rec'}
 }
 @media(max-width:1100px) and (min-width:769px){
   .health-head{grid-template-columns:130px minmax(180px,1fr) minmax(220px,1fr);gap:12px}.health-dims{gap:5px;padding-left:12px;padding-right:12px}.health-note{padding-left:12px;padding-right:12px}
@@ -287,7 +287,7 @@ const portfolio={
   usPositions:[],hkPositions:[]
 };
 
-let allPos=[],gainers=[],priceTime='',latestMarketPrices={},discoveryCandidates=[],discoveryFetchPromise=null,accountLive=false,accountFetchedAt='',performanceFetchedAt=0,performanceFetchPromise=null;
+let allPos=[],gainers=[],priceTime='',latestMarketPrices={},discoveryCandidates=[],discoveryFetchPromise=null,accountLive=false,accountFetchedAt='',performanceFetchedAt=0,performanceFetchPromise=null,portfolioRiskData=null,marketRegimeData=null,riskFetchedAt=0,riskFetchPromise=null;
 
 function calcAllPos(prices){
   const us=portfolio.usPositions.map(p=>{
@@ -306,6 +306,7 @@ function calcAllPos(prices){
 
 function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
 function renderHealthReport(positions){
+  if(portfolioRiskData){renderServerRiskReport(portfolioRiskData,marketRegimeData);return}
   if(!positions.length)return;
   const comparable=positions.filter(p=>p.returnComparable),invested=positions.reduce((sum,p)=>sum+p.marketValueCny,0);
   const positive=comparable.filter(p=>p.ret>=0).length;
@@ -343,6 +344,45 @@ function renderHealthReport(positions){
   document.getElementById('health-dims').innerHTML=dimensions.map(d=>`<div class="health-dim"><div class="health-dim-top"><b>${d.name}</b><span>${d.score}/${d.max}</span></div><small>${d.desc}</small><div class="health-bar"><i style="--fill:${d.score/d.max*100}%"></i></div></div>`).join('');
   const largestLabel=largest.sym+(largestWeight>.2?'集中度偏高':'占比可控');
   document.getElementById('health-notes').innerHTML=`<div class="health-note-card"><strong>数据 · LIVE</strong><p>数量、成本和资产来自 LongPort 实时账户；YTD与年化节奏来自长桥组合盈亏接口，不再使用持仓浮盈率冒充账户业绩。</p></div><div class="health-note-card"><strong>关注 · WATCH</strong><p>${largestLabel}；${leverage?'杠杆 ETF 会放大波动，需单独设定仓位上限。':'目前未发现杠杆 ETF 集中风险。'}</p></div><div class="health-note-card"><strong>执行 · ACTION</strong><p>保留购买力作为缓冲，新增资金优先补足低相关资产，避免继续加码当前最弱仓位。</p></div>`;
+}
+
+function renderServerRiskReport(risk,market){
+  const metrics=risk.metrics||{},concentration=risk.concentration||{},quality=risk.quality||{};
+  const numeric=value=>value===null||value===undefined||value===''?NaN:Number(value);
+  const vol=numeric(metrics.portfolio_vol_annualized),cvar=numeric(metrics.historical_cvar_95_1d),rawDrawdown=numeric(metrics.max_drawdown_252d),drawdown=Number.isFinite(rawDrawdown)?Math.abs(rawDrawdown):NaN,cash=numeric(metrics.cash_pct),top1=numeric(concentration.top1_pct),hhi=numeric(concentration.hhi);
+  const available=value=>Number.isFinite(value)&&value>=0;
+  const dimensions=[
+    {name:'分散与集中',score:Math.round(clamp(25-(available(top1)?Math.max(0,top1-10)*.6:25)-(available(hhi)?Math.max(0,hhi-.10)*35:0),0,25)),max:25,desc:available(top1)?`最大仓位 ${top1.toFixed(1)}%，HHI ${hhi.toFixed(3)}`:'缺少集中度数据'},
+    {name:'组合波动',score:available(vol)?Math.round(clamp((.45-vol)/.30*25,0,25)):0,max:25,desc:available(vol)?`年化波动 ${(vol*100).toFixed(1)}%`:'历史样本不足'},
+    {name:'尾部风险',score:available(cvar)?Math.round(clamp((.05-cvar)/.04*20,0,20)):0,max:20,desc:available(cvar)?`单日 CVaR95 ${(cvar*100).toFixed(2)}%`:'历史样本不足'},
+    {name:'历史回撤',score:available(drawdown)?Math.round(clamp((.40-drawdown)/.30*20,0,20)):0,max:20,desc:available(drawdown)?`252日最大回撤 ${(drawdown*100).toFixed(1)}%`:'历史样本不足'},
+    {name:'现金缓冲',score:available(cash)?Math.round(clamp(cash/15*10,0,10)):0,max:10,desc:available(cash)?`现金占净资产 ${cash.toFixed(1)}%`:'现金数据缺失'}
+  ];
+  const total=dimensions.reduce((sum,item)=>sum+item.score,0),coverage=Number(quality.position_coverage_pct)||0;
+  const status=coverage<70?'数据覆盖不足':total>=80?'风险结构健康':total>=65?'整体可控，存在改进项':total>=50?'风险偏高':'需要优先降低风险';
+  const weak=[...dimensions].sort((a,b)=>a.score/a.max-b.score/b.max)[0],largestRisk=(risk.risk_contributions||[])[0];
+  const marketLabel=item=>!item||item.regime==='unavailable'?'不可用':`${item.regime==='aggressive'?'条件较友好':item.regime==='defensive'?'防御':'均衡'} ${Number(item.score).toFixed(1)}分`;
+  document.getElementById('health-score').textContent=total;
+  document.getElementById('health-score-ring').style.setProperty('--score',total+'%');
+  document.getElementById('health-status').textContent=status+' · 风险模型影子模式';
+  document.getElementById('health-summary-text').textContent=`评分仅衡量组合风险健康度，不因20%收益目标而鼓励增加风险。历史覆盖 ${coverage.toFixed(0)}%，总敞口 ${Number(metrics.gross_exposure_pct||0).toFixed(1)}%，净敞口 ${Number(metrics.net_exposure_pct||0).toFixed(1)}%。`;
+  document.querySelector('.health-meta').textContent=`模型 ${risk.model_version} · 快照 ${risk.snapshot_id||'--'} · 策略${risk.policy_status==='confirmed'?'已确认':'未确认'} · 暂未覆盖历史汇率风险`;
+  document.getElementById('health-priority').textContent=`优先检查「${weak.name}」：${weak.desc}。${largestRisk?`当前最大风险贡献来自 ${largestRisk.symbol}（${largestRisk.variance_contribution_pct.toFixed(1)}%）。`:''}`;
+  document.getElementById('health-dims').innerHTML=dimensions.map(item=>`<div class="health-dim"><div class="health-dim-top"><b>${item.name}</b><span>${item.score}/${item.max}</span></div><small>${item.desc}</small><div class="health-bar"><i style="--fill:${item.score/item.max*100}%"></i></div></div>`).join('');
+  const us=market?.markets?.US,hk=market?.markets?.HK,warnings=(quality.warnings||[]).slice(0,2).join('；')||'暂无额外数据警告';
+  document.getElementById('health-notes').innerHTML=`<div class="health-note-card"><strong>市场 · REGIME</strong><p>美股：${escapeHTML(marketLabel(us))}；港股：${escapeHTML(marketLabel(hk))}。状态仅调整新增风险预算。</p></div><div class="health-note-card"><strong>质量 · DATA</strong><p>${escapeHTML(warnings)}</p></div><div class="health-note-card"><strong>约束 · POLICY</strong><p>${risk.policy_status==='confirmed'?'按已确认策略检查目标区间。':'目标权重尚未配置，不生成虚假的补仓数量。'}</p></div>`;
+}
+
+async function fetchRiskReport(force=false){
+  if(riskFetchPromise)return riskFetchPromise;
+  riskFetchPromise=(async()=>{try{
+    const suffix=force?'?force=1':'';
+    const [riskResp,marketResp]=await Promise.all([fetch(API_BASE+'/portfolio-risk'+suffix,{headers:apiHeaders(),cache:'no-store'}),fetch(API_BASE+'/market'+suffix,{headers:apiHeaders(),cache:'no-store'})]);
+    if(riskResp.status===401||marketResp.status===401){showLogin('登录已失效，请重新验证');return}
+    const risk=await riskResp.json(),market=await marketResp.json();if(!riskResp.ok)throw new Error(risk.error||'组合风险暂不可用');
+    portfolioRiskData=risk;marketRegimeData=marketResp.ok?market:null;riskFetchedAt=Date.now();renderServerRiskReport(portfolioRiskData,marketRegimeData);
+  }catch(error){document.getElementById('health-status').textContent='组合风险计算暂不可用';document.getElementById('health-summary-text').textContent=error.message;console.log('Risk report:',error)}finally{riskFetchPromise=null}})();
+  return riskFetchPromise;
 }
 
 function refreshAllCharts(){
@@ -502,7 +542,8 @@ function renderRecommendationPool(){
   if(!discoveryCandidates.length){strip.innerHTML='<div class="rec-empty">正在从组合外候选池筛选趋势、风险与行业互补性…</div>';return}
   strip.innerHTML=discoveryCandidates.map(p=>{
     const reason=`${p.sector}互补 · 60日动量 ${p.momentum_60d>=0?'+':''}${(p.momentum_60d*100).toFixed(1)}% · 120日回撤 ${(p.drawdown_120d*100).toFixed(1)}%`;
-    return `<button class="rec-card" data-symbol="${p.sym}" aria-label="查看组合外候选 ${p.sym}"><span class="rec-card-top"><span class="rec-card-symbol">#${p.rank} ${p.sym}</span><span class="rec-card-action add">评分 ${p.score}</span></span><span class="rec-card-name">${escapeHTML(p.name)} · ${escapeHTML(p.sector)} · 当前未持有</span><span class="rec-card-reason">${escapeHTML(reason)}</span><span class="rec-card-meta"><span>观察价 ${formatNativePrice(p.entry_price,p.ccy)}</span><span>仓位上限 ${Number(p.target_position_pct).toFixed(1)}%</span></span></button>`;
+    const sizing=p.target_position_pct!==null&&p.target_position_pct!==undefined&&Number.isFinite(Number(p.target_position_pct))?`目标上限 ${Number(p.target_position_pct).toFixed(1)}%`:'仅研究，不生成仓位';
+    return `<button class="rec-card" data-symbol="${p.sym}" aria-label="查看组合外候选 ${p.sym}"><span class="rec-card-top"><span class="rec-card-symbol">#${p.rank} ${p.sym}</span><span class="rec-card-action hold">研究评分 ${p.score}</span></span><span class="rec-card-name">${escapeHTML(p.name)} · ${escapeHTML(p.sector)} · 当前未持有</span><span class="rec-card-reason">${escapeHTML(reason)}</span><span class="rec-card-meta"><span>观察价 ${formatNativePrice(p.entry_price,p.ccy)}</span><span>${sizing}</span></span></button>`;
   }).join('');
 }
 function discoveryContext(){
@@ -554,14 +595,15 @@ function applyStructuredAnalysis(p,data,cached=false){
   document.getElementById('detail-buy-zone').textContent=data.entry_price?currency+Number(data.entry_price).toFixed(2):'等待确认';
   document.getElementById('detail-sell-zone').textContent=data.price_target?currency+Number(data.price_target).toFixed(2):'等待确认';
   document.getElementById('detail-stop-loss').textContent=data.stop_loss?currency+Number(data.stop_loss).toFixed(2):'等待确认';
-  document.getElementById('detail-target-weight').textContent=Number.isFinite(Number(data.target_position_pct))?Number(data.target_position_pct).toFixed(1)+'%':'等待确认';
+  document.getElementById('detail-target-weight').textContent=data.target_position_pct!==null&&data.target_position_pct!==undefined&&Number.isFinite(Number(data.target_position_pct))?Number(data.target_position_pct).toFixed(1)+'%':'策略未确认';
   document.getElementById('detail-upside').textContent=Number.isFinite(Number(data.expected_upside_pct))?(Number(data.expected_upside_pct)>=0?'+':'')+Number(data.expected_upside_pct).toFixed(1)+'%':'等待确认';
   document.getElementById('detail-risk-reward').textContent=data.risk_reward_ratio!==null&&Number.isFinite(Number(data.risk_reward_ratio))?Number(data.risk_reward_ratio).toFixed(2)+' : 1':'不适用';
   document.getElementById('detail-sizing').textContent=data.position_sizing||'维持现有仓位';
   updateAdvicePriceLines(p,data);
-  const source={deepseek_structured:'DeepSeek结构化分析',rule_fallback:'规则回退',rule_fallback_after_error:'AI失败·规则回退'}[data.source]||data.source;
-  document.getElementById('analysis-meta').textContent=`${source} · 置信度 ${data.confidence||0}% · ${cached?'缓存结果':'刚刚生成'} · 2小时有效 / 价格变动1%自动更新`;
-  const risk=document.getElementById('analysis-risk'),flags=data.risk_flags||[];risk.textContent=flags.join('；');risk.classList.toggle('show',flags.length>0);
+  const source={deepseek_structured:'DeepSeek结构化分析',rule_fallback:'规则回退',rule_fallback_after_error:'AI失败·规则回退','deterministic_policy_engine':'确定性策略引擎','deterministic_policy_engine+deepseek_narrative':'确定性策略引擎 · DeepSeek仅解释','deterministic_policy_engine+narrative_fallback':'确定性策略引擎 · 规则解释'}[data.source]||data.source;
+  const factorStatus=data.factor_analysis?.model_status==='shadow'?' · 多因子影子模式未参与评级':'';
+  document.getElementById('analysis-meta').textContent=`${source} · 置信度 ${data.confidence||0}%${factorStatus} · ${cached?'缓存结果':'刚刚生成'} · 2小时有效 / 价格变动1%自动更新`;
+  const risk=document.getElementById('analysis-risk'),flags=[...(data.risk_flags||[]),...(data.factor_analysis?.quality?.warnings||[])];risk.textContent=flags.join('；');risk.classList.toggle('show',flags.length>0);
   renderEvidence('analysis-bull',data.bull_case);renderEvidence('analysis-bear',data.bear_case);
   document.getElementById('analysis-invalidation').textContent=(data.invalidation_conditions||[]).join('；')||'暂无';
   document.getElementById('analysis-horizon').textContent=data.time_horizon||'暂无';
@@ -610,10 +652,10 @@ function openDiscoveryDetail(p){
   if(detailChart)detailChart.dispose();
   detailChart=echarts.init(document.getElementById('stock-detail-chart'));
   detailChart.setOption({animationDuration:500,tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.96)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11},valueFormatter:v=>currency+Number(v).toFixed(2)},grid:{left:58,right:18,top:18,bottom:28},xAxis:{type:'category',data:history.map(item=>item.date),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9,hideOverlap:true}},yAxis:{type:'value',scale:true,axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>currency+Number(v).toFixed(2)},splitLine:{lineStyle:{color:'rgba(255,255,255,.04)'}}},series:[{name:'真实日线收盘价',type:'line',data:history.map(item=>item.close),smooth:false,symbol:'none',lineStyle:{color:'#ff6a00',width:2},areaStyle:{color:'rgba(255,80,0,.10)'}}]});
-  const data={rating:'Buy',confidence:p.score,executive_summary:p.summary,bull_case:p.bull_case,bear_case:p.bear_case,entry_price:p.entry_price,stop_loss:p.stop_loss,price_target:p.price_target,target_position_pct:p.target_position_pct,expected_upside_pct:p.expected_upside_pct,risk_reward_ratio:p.risk_reward_ratio,position_sizing:p.position_sizing,action_steps:p.action_steps,review_trigger:'每日收盘后更新筛选；触及观察价、止损价或趋势条件改变时复核。',new_evidence:[`60日价格动量 ${(p.momentum_60d*100).toFixed(1)}%`,`当前${p.sector}组合权重 ${(p.sector_weight*100).toFixed(1)}%`],consistency:{status:'passed',passed:true},change_reason:'首次进入组合外候选池，尚无上一条建议。',invalidation_conditions:p.invalidation_conditions,time_horizon:'1-3个月观察',generated_at:p.as_of,source:'quant_discovery'};
+  const data={rating:'Hold',confidence:Math.min(50,p.score),executive_summary:p.summary,bull_case:p.bull_case,bear_case:p.bear_case,entry_price:p.entry_price,stop_loss:p.stop_loss,price_target:p.price_target,target_position_pct:p.target_position_pct,expected_upside_pct:p.expected_upside_pct,risk_reward_ratio:p.risk_reward_ratio,position_sizing:p.position_sizing,action_steps:p.action_steps,review_trigger:'每日收盘后更新筛选；触及观察价、止损价或趋势条件改变时复核。',new_evidence:[`60日价格动量 ${(p.momentum_60d*100).toFixed(1)}%`,`当前${p.sector}组合权重 ${(p.sector_weight*100).toFixed(1)}%`],consistency:{status:'passed',passed:true},change_reason:'首次进入组合外研究候选池，尚无上一条建议。',invalidation_conditions:p.invalidation_conditions,time_horizon:'1-3个月观察',generated_at:p.as_of,source:'quant_discovery_shadow'};
   applyStructuredAnalysis(p,data,false);
-  document.getElementById('detail-action').textContent='等待建仓';document.getElementById('detail-action').className='stock-action add';
-  document.getElementById('analysis-meta').textContent=`每日量化筛选 · 数据截至 ${p.as_of} · 评分 ${p.score}/100 · ${p.source}`;
+  document.getElementById('detail-action').textContent='研究候选';document.getElementById('detail-action').className='stock-action hold';
+  document.getElementById('analysis-meta').textContent=`每日量化筛选 · 影子模式 · 数据截至 ${p.as_of} · 评分 ${p.score}/100 · ${p.source}`;
   document.getElementById('analysis-validation').textContent='新候选尚无持仓后验证样本；评分不代表收益概率';
   document.getElementById('analysis-refresh').textContent='刷新候选筛选';
   document.getElementById('stock-detail-footer').textContent='候选每日收盘后重算；评分用于筛选，不构成收益承诺。未进入建议区间前不追涨。';
@@ -727,6 +769,7 @@ function applyAccountSnapshot(data){
   document.getElementById('sk-hkd').textContent='HK$ '+portfolio.cashHKD.toLocaleString(undefined,{maximumFractionDigits:2});
   updateMarkets(data.prices||{});initAll(data.prices||{},data.fetched_at);
   if(!performanceFetchedAt||Date.now()-performanceFetchedAt>15*60*1000)fetchPerformance();
+  if(data.complete&&(!riskFetchedAt||Date.now()-riskFetchedAt>5*60*1000))fetchRiskReport(false);
   if(!data.complete){
     const missing=[...(data.missing_prices||[]),...(data.missing_currencies||[]),...Object.keys(data.source_errors||{})];
     document.getElementById('live-label').textContent='PARTIAL '+data.fetched_at;
