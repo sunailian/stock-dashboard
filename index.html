@@ -425,6 +425,14 @@ const PRICE_HISTORY_KEY='zhuoyuan_price_history_v1';
 const DISCOVERY_CACHE_KEY='zhuoyuan_discovery_cache_v1';
 function nativeCurrency(ccy){return ccy==='USD'?'$':ccy==='CNY'?'¥':'HK$'}
 function formatNativePrice(value,ccy){return Number.isFinite(Number(value))&&Number(value)>0?nativeCurrency(ccy)+Number(value).toFixed(2):'--'}
+function formatUTC8Time(value){
+  const parsed=value?new Date(value):new Date(),date=Number.isNaN(parsed.getTime())?new Date():parsed;
+  return new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(date)+' UTC+8';
+}
+function formatUTC8DateTime(value=new Date()){
+  const parsed=new Date(value),date=Number.isNaN(parsed.getTime())?new Date():parsed;
+  return new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(date).replaceAll('/','-')+' UTC+8';
+}
 function renderNetAssets(){
   const currency=portfolio.accountCurrency||'CNY',symbol=nativeCurrency(currency),native=Number(portfolio.netAssetsNative)||0;
   const converted=currency==='CNY'?'':` ｜ 人民币折算 ¥${Math.round(portfolio.netAssets).toLocaleString()}`;
@@ -744,11 +752,11 @@ function initAll(prices,updated=''){
   portfolio.totalReturn=comparablePnl/comparableCost*100;
   recordPriceSnapshot();
   updateDecisionOutcomes();
-  priceTime=updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  priceTime=updated||new Date().toISOString();
   refreshAllCharts();
   if(accountLive){if(discoveryCandidates.length)renderRecommendationPool();else fetchRecommendations()}
   refreshOpenDetailPrice();
-  document.getElementById('live-label').textContent='LIVE '+priceTime;
+  document.getElementById('live-label').textContent='LIVE '+formatUTC8Time(priceTime);
   // Update hero numbers
   renderNetAssets();
   renderGoalProgress();
@@ -772,7 +780,7 @@ function applyAccountSnapshot(data){
   if(data.complete&&(!riskFetchedAt||Date.now()-riskFetchedAt>5*60*1000))fetchRiskReport(false);
   if(!data.complete){
     const missing=[...(data.missing_prices||[]),...(data.missing_currencies||[]),...Object.keys(data.source_errors||{})];
-    document.getElementById('live-label').textContent='PARTIAL '+data.fetched_at;
+    document.getElementById('live-label').textContent='PARTIAL '+formatUTC8Time(data.fetched_at);
     document.getElementById('health-status').textContent='数据不完整，暂停评分';
     document.getElementById('health-summary-text').textContent='持仓数量和成本已显示，但缺失行情或汇率会导致组合收益与健康度失真，因此暂不计算分数。';
     document.getElementById('health-priority').textContent='等待缺失数据源恢复；期间不生成个股操作建议。';
@@ -825,7 +833,7 @@ function animParticles(){if(window.innerWidth<=768)return;ctx.clearRect(0,0,1920
 document.addEventListener('mousemove',e=>{const g=document.getElementById('glow-cursor');g.style.left=e.clientX+'px';g.style.top=e.clientY+'px';g.style.opacity='1';setTimeout(()=>g.style.opacity='0',2000)});
 
 // ── Date ──
-document.getElementById('date-str').textContent=new Date().toISOString().slice(0,16).replace('T',' ')+' HKT';
+document.getElementById('date-str').textContent=formatUTC8DateTime();
 
 // ── Number animation ──
 function animateNum(el,target,prefix='',suffix='',dec=0){let cur=0;const step=()=>{cur+=(target-cur)*.15;if(Math.abs(target-cur)<.1){el.textContent=prefix+target.toFixed(dec)+suffix;return}el.textContent=prefix+Math.round(cur).toLocaleString()+suffix;requestAnimationFrame(step)};step()}
