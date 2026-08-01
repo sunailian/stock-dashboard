@@ -290,7 +290,7 @@ let FX={CNY:1};
 const portfolio={
   netAssets:0,cash:0,buyPower:0,cashUSD:0,cashHKD:0,totalReturn:0,annualTarget:20,
   netAssetsNative:0,accountCurrency:'CNY',
-  performance:null,
+  performance:null,accountRisk:null,pendingOrders:[],orderDataComplete:false,priceSource:'',priceSourceStatus:'',
   usPositions:[],hkPositions:[]
 };
 
@@ -325,7 +325,8 @@ function renderHealthReport(positions){
 function renderServerRiskReport(risk,market){
   const metrics=risk.metrics||{},concentration=risk.concentration||{},quality=risk.quality||{};
   const numeric=value=>value===null||value===undefined||value===''?NaN:Number(value);
-  const vol=numeric(metrics.portfolio_vol_annualized),cvar=numeric(metrics.historical_cvar_95_1d),rawDrawdown=numeric(metrics.max_drawdown_252d),drawdown=Number.isFinite(rawDrawdown)?Math.abs(rawDrawdown):NaN,cash=numeric(metrics.cash_pct),top1=numeric(concentration.top1_pct),hhi=numeric(concentration.hhi);
+  const latestMarginCall=Number(portfolio.accountRisk?.marginCallCny)||0,latestPendingOrders=portfolio.pendingOrders?.length||0;
+  const vol=numeric(metrics.portfolio_vol_annualized),cvar=numeric(metrics.historical_cvar_95_1d),rawDrawdown=numeric(metrics.max_drawdown_252d),drawdown=Number.isFinite(rawDrawdown)?Math.abs(rawDrawdown):NaN,cash=numeric(metrics.cash_pct),top1=numeric(concentration.top1_pct),hhi=numeric(concentration.hhi),marginCall=Math.max(Number(metrics.margin_call_cny)||0,latestMarginCall),pendingOrders=Math.max(Number(metrics.pending_order_count)||0,latestPendingOrders);
   const available=value=>Number.isFinite(value)&&value>=0;
   const dimensions=[
     {name:'分散与集中',score:Math.round(clamp(25-(available(top1)?Math.max(0,top1-10)*.6:25)-(available(hhi)?Math.max(0,hhi-.10)*35:0),0,25)),max:25,desc:available(top1)?`最大仓位 ${top1.toFixed(1)}%，HHI ${hhi.toFixed(3)}`:'缺少集中度数据'},
@@ -335,15 +336,15 @@ function renderServerRiskReport(risk,market){
     {name:'现金缓冲',score:available(cash)?Math.round(clamp(cash/15*10,0,10)):0,max:10,desc:available(cash)?`现金占净资产 ${cash.toFixed(1)}%`:'现金数据缺失'}
   ];
   const total=dimensions.reduce((sum,item)=>sum+item.score,0),coverage=Number(quality.position_coverage_pct)||0;
-  const status=coverage<70?'数据覆盖不足':total>=80?'风险结构健康':total>=65?'整体可控，存在改进项':total>=50?'风险偏高':'需要优先降低风险';
+  const status=marginCall>0?'保证金风险，禁止新增仓位':coverage<70?'数据覆盖不足':total>=80?'风险结构健康':total>=65?'整体可控，存在改进项':total>=50?'风险偏高':'需要优先降低风险';
   const weak=[...dimensions].sort((a,b)=>a.score/a.max-b.score/b.max)[0],largestRisk=(risk.risk_contributions||[])[0];
   const marketLabel=item=>!item||item.regime==='unavailable'?'不可用':`${item.regime==='aggressive'?'条件较友好':item.regime==='defensive'?'防御':'均衡'} ${Number(item.score).toFixed(1)}分`;
   document.getElementById('health-score').textContent=total;
   document.getElementById('health-score-ring').style.setProperty('--score',total+'%');
   document.getElementById('health-status').textContent=status+' · 风险模型影子模式';
-  document.getElementById('health-summary-text').textContent=`评分仅衡量组合风险健康度，不因20%收益目标而鼓励增加风险。历史覆盖 ${coverage.toFixed(0)}%，总敞口 ${Number(metrics.gross_exposure_pct||0).toFixed(1)}%，净敞口 ${Number(metrics.net_exposure_pct||0).toFixed(1)}%。`;
+  document.getElementById('health-summary-text').textContent=`评分仅衡量组合风险健康度。历史覆盖 ${coverage.toFixed(0)}%，总敞口 ${Number(metrics.gross_exposure_pct||0).toFixed(1)}%，${portfolio.orderDataComplete?`未完成订单 ${pendingOrders} 笔`:'订单状态不可用，禁止新增仓位'}${portfolio.priceSourceStatus==='degraded_until_longbridge_quote_sdk'?'；当前行情为新浪/腾讯降级源':''}。`;
   document.querySelector('.health-meta').textContent=`模型 ${risk.model_version} · 快照 ${risk.snapshot_id||'--'} · 策略${risk.policy_status==='confirmed'?'已确认':'未确认'} · 暂未覆盖历史汇率风险`;
-  document.getElementById('health-priority').textContent=`优先检查「${weak.name}」：${weak.desc}。${largestRisk?`当前最大风险贡献来自 ${largestRisk.symbol}（${largestRisk.variance_contribution_pct.toFixed(1)}%）。`:''}`;
+  document.getElementById('health-priority').textContent=marginCall>0?`账户追缴保证金约 ¥${marginCall.toLocaleString()}；在风险解除前禁止新增仓位。`:`优先检查「${weak.name}」：${weak.desc}。${largestRisk?`最大风险贡献来自 ${largestRisk.symbol}（${largestRisk.variance_contribution_pct.toFixed(1)}%）。`:''}`;
   document.getElementById('health-dims').innerHTML=dimensions.map(item=>`<div class="health-dim"><div class="health-dim-top"><b>${item.name}</b><span>${item.score}/${item.max}</span></div><small>${item.desc}</small><div class="health-bar"><i style="--fill:${item.score/item.max*100}%"></i></div></div>`).join('');
   const us=market?.markets?.US,hk=market?.markets?.HK,warnings=(quality.warnings||[]).slice(0,2).join('；')||'暂无额外数据警告';
   document.getElementById('health-notes').innerHTML=`<div class="health-note-card"><strong>市场 · REGIME</strong><p>美股：${escapeHTML(marketLabel(us))}；港股：${escapeHTML(marketLabel(hk))}。状态仅调整新增风险预算。</p></div><div class="health-note-card"><strong>质量 · DATA</strong><p>${escapeHTML(warnings)}</p></div><div class="health-note-card"><strong>约束 · POLICY</strong><p>${risk.policy_status==='confirmed'?'按已确认策略检查目标区间。':'目标权重尚未配置，不生成虚假的补仓数量。'}</p></div>`;
@@ -760,6 +761,7 @@ function applyAccountSnapshot(data){
   const account=data.account||{},cash=account.cash_by_currency||{};
   portfolio.netAssets=Number(account.net_assets_cny)||0;portfolio.cash=Number(account.total_cash_cny)||0;portfolio.buyPower=Number(account.buy_power_cny)||0;
   portfolio.netAssetsNative=Number(account.net_assets_native)||portfolio.netAssets;portfolio.accountCurrency=account.account_currency||'CNY';
+  portfolio.accountRisk={riskLevels:account.risk_levels||[],initMarginCny:Number(account.init_margin_cny)||0,maintenanceMarginCny:Number(account.maintenance_margin_cny)||0,marginCallCny:Number(account.margin_call_cny)||0};portfolio.pendingOrders=data.pending_orders||[];portfolio.orderDataComplete=data.order_data_complete===true;portfolio.priceSource=data.price_source||'';portfolio.priceSourceStatus=data.price_source_status||'';
   portfolio.cashUSD=Number(cash.USD)||0;portfolio.cashHKD=Number(cash.HKD)||0;
   const positions=(data.positions||[]).map(item=>({sym:item.symbol,name:item.name,qty:Number(item.quantity),availableQty:Number(item.available_quantity),cost:Number(item.cost_price),ccy:item.currency,sector:item.sector,accountChannels:item.account_channels||[]}));
   portfolio.usPositions=positions.filter(p=>!p.sym.endsWith('.HK'));portfolio.hkPositions=positions.filter(p=>p.sym.endsWith('.HK'));
@@ -769,6 +771,7 @@ function applyAccountSnapshot(data){
   document.getElementById('sk-usd').textContent='$ '+portfolio.cashUSD.toLocaleString(undefined,{maximumFractionDigits:2});
   document.getElementById('sk-hkd').textContent='HK$ '+portfolio.cashHKD.toLocaleString(undefined,{maximumFractionDigits:2});
   updateMarkets(data.prices||{});initAll(data.prices||{},data.fetched_at);
+  if(data.price_source_status==='degraded_until_longbridge_quote_sdk'){const live=document.getElementById('live-label');live.textContent='LIVE* '+formatUTC8Time(data.fetched_at);live.title='持仓、成本和账户来自Longbridge；当前股票行情使用新浪/腾讯降级源。'}
   if(!performanceFetchedAt||Date.now()-performanceFetchedAt>15*60*1000)fetchPerformance();
   if(data.complete&&(!riskFetchedAt||Date.now()-riskFetchedAt>5*60*1000))fetchRiskReport(false);
   if(!data.complete){

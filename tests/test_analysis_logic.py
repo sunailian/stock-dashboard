@@ -31,6 +31,9 @@ def load_logic():
         'realized_volatility_series', 'market_regime_from_history',
         'pearson', 'company_group_symbol', 'portfolio_risk_from_histories',
         'deterministic_price_plan', 'factor_analysis_from_history',
+        'longbridge_symbol', 'longbridge_counter_id', 'nested_dicts',
+        'normalize_order_status', 'normalize_pending_orders', 'parse_event_day',
+        'symbol_from_counter', 'normalize_finance_events',
     }
     module = ast.Module(
         body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names],
@@ -58,6 +61,7 @@ def load_logic():
             'risk':{}, 'limits':{}, 'target_bands':[], 'confirmed_by_user':False, 'updated_at':None,
         },
         'DISCOVERY_ALIASES': {'BABA':'ALIBABA', '9988.HK':'ALIBABA'},
+        'ACTIVE_ORDER_STATUSES': {'new','waittonew','partialfilled','waittocancel','pendingreplace'},
         'json': json,
     }
     exec(compile(module, 'app.py', 'exec'), namespace)
@@ -290,6 +294,53 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertAlmostEqual(sum(item['variance_contribution_pct'] for item in result['risk_contributions']),100,places=1)
         self.assertTrue(result['quality']['cross_market_lag_warning'])
         self.assertFalse(result['fx_history_covered'])
+
+    def test_pending_orders_only_keep_active_unfilled_orders(self):
+        raw={'orders':[
+            {'order_id':'1','symbol':'AAPL.US','side':'Buy','status':'PartialFilled','price':'190','quantity':'10','executed_quantity':'4'},
+            {'order_id':'2','symbol':'NVDA.US','side':'Sell','status':'Filled','price':'180','quantity':'2'},
+        ]}
+        result=self.logic['normalize_pending_orders'](raw)
+        self.assertEqual(len(result),1)
+        self.assertEqual(result[0]['symbol'],'AAPL')
+        self.assertEqual(result[0]['side'],'buy')
+        self.assertEqual(result[0]['executed_quantity'],4)
+
+    def test_account_snapshot_exposes_margin_and_pending_orders(self):
+        stock_data={'list':[{'stock_info':[{'symbol':'AAPL.US','quantity':'1','available_quantity':'1','cost_price':'100','currency':'USD','market':'US'}]}]}
+        balance_data={'list':[{'currency':'USD','net_assets':'1000','buy_power':'300','init_margin':'100','maintenance_margin':'80','margin_call':'5','max_finance_amount':'500','remaining_finance_amount':'200','risk_level':'warning','cash_infos':[]}]}
+        exchange_data={'exchanges':[{'base_currency':'CNY','other_currency':'USD','average_rate':7}]}
+        orders={'orders':[{'order_id':'1','symbol':'AAPL.US','side':'Buy','status':'New','quantity':'2','executed_quantity':'0'}]}
+        result=self.logic['build_account_snapshot'](stock_data,balance_data,exchange_data,{'AAPL':120},orders_data=orders)
+        self.assertEqual(result['account']['margin_call_cny'],35)
+        self.assertEqual(result['account']['maintenance_margin_cny'],560)
+        self.assertEqual(result['account']['risk_levels'],['warning'])
+        self.assertEqual(len(result['pending_orders']),1)
+        self.assertEqual(result['price_source_status'],'degraded_until_longbridge_quote_sdk')
+
+    def test_finance_calendar_normalization_and_event_guard(self):
+        raw={'list':[{'counter_id':'ST/US/AAPL','report_date':'2026-08-03','title':'季度业绩发布','type':'report'}]}
+        events=self.logic['normalize_finance_events'](raw,['AAPL.US'],date(2026,8,1))
+        self.assertEqual(events[0]['symbol'],'AAPL')
+        self.assertEqual(events[0]['days_until'],2)
+        body=dict(self.body,upcoming_events=events)
+        result=self.run_decision({'rating':'Buy','executive_summary':'建议加仓。','position_sizing':'建议加仓。'},body)
+        self.assertEqual(result['rating'],'Hold')
+        self.assertTrue(any('财报事件数据' in item for item in result['consistency']['violations']))
+
+    def test_pending_buy_order_blocks_duplicate_add(self):
+        body=dict(self.body,portfolio_context={'position_weight':.05,'company_weight':.05,'pending_buy_quantity':10})
+        result=self.run_decision({'rating':'Overweight','executive_summary':'建议加仓。','position_sizing':'建议加仓。'},body)
+        self.assertEqual(result['rating'],'Hold')
+        self.assertTrue(any('订单状态' in item for item in result['consistency']['violations']))
+
+    def test_missing_order_or_event_data_blocks_add(self):
+        body=dict(self.body,portfolio_context={'position_weight':.05,'company_weight':.05,'order_data_complete':False},event_data_complete=False)
+        flags=self.logic['build_risk_flags'](body)
+        result=self.run_decision({'rating':'Buy','executive_summary':'建议加仓。','position_sizing':'建议加仓。'},body)
+        self.assertEqual(result['rating'],'Hold')
+        self.assertTrue(any('订单风险覆盖不完整' in item for item in flags))
+        self.assertTrue(any('财报事件日历暂不可用' in item for item in flags))
 
 
 if __name__ == '__main__':

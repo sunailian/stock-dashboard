@@ -1,6 +1,6 @@
 """股票看板 API — 行情代理、组合外标的筛选与 AI 分析。"""
 import json, os, urllib.request, urllib.error, ssl, time, math, statistics, hashlib, hmac, base64, calendar
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlencode
 from flask import Flask, request, jsonify
@@ -41,6 +41,11 @@ PERFORMANCE_CACHE = {'saved_at':0, 'data':None}
 ACCOUNT_CACHE = {'saved_at': 0, 'snapshot': None}
 MARKET_CACHE = {'saved_at': 0, 'data': None}
 PORTFOLIO_RISK_CACHE = {'saved_at': 0, 'signature': None, 'data': None}
+EVENT_CACHE = {'saved_at': 0, 'signature': None, 'data': None}
+ACTIVE_ORDER_STATUSES = {
+    'new', 'waittonew', 'notreported', 'pending', 'submitted', 'partialfilled',
+    'partiallyfilled', 'waittocancel', 'pendingcancel', 'pendingreplace', 'replacednotreported',
+}
 POLICY_DEFAULT = {
     'version': 1, 'base_currency': 'CNY', 'annual_return_objective': .20,
     'benchmark_by_market': {'US':'SPY.US', 'HK':'HSI.HK'},
@@ -227,6 +232,127 @@ def rates_to_cny(exchange_data):
                 if target not in visited:
                     queue.append((target, factor * rate))
     return result
+
+def longbridge_symbol(symbol):
+    value = normalized_symbol(symbol)
+    if value.endswith('.HK'):
+        code = value[:-3]
+        return f'{int(code) if code.isdigit() else code}.HK'
+    return value + '.US' if value and '.' not in value else value
+
+def longbridge_counter_id(symbol):
+    value = longbridge_symbol(symbol)
+    if value.endswith('.HK'):
+        return 'ST/HK/' + value[:-3]
+    if value.endswith('.US'):
+        return 'ST/US/' + value[:-3]
+    return value
+
+def nested_dicts(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from nested_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from nested_dicts(child)
+
+def normalize_order_status(value):
+    return ''.join(char for char in str(value or '').lower() if char.isalnum())
+
+def normalize_pending_orders(data):
+    orders, seen = [], set()
+    for item in nested_dicts(data):
+        order_id = item.get('order_id') or item.get('id')
+        symbol = item.get('symbol') or item.get('code')
+        status = item.get('status') or item.get('order_status')
+        if not order_id or not symbol or normalize_order_status(status) not in ACTIVE_ORDER_STATUSES:
+            continue
+        key = str(order_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        side = str(item.get('side') or item.get('action') or '').lower()
+        orders.append({
+            'order_id':key, 'symbol':normalized_symbol(symbol),
+            'side':'buy' if side in {'buy','b'} else 'sell' if side in {'sell','s'} else side,
+            'status':str(status), 'price':as_float(item.get('price')) or None,
+            'quantity':as_float(item.get('quantity') or item.get('qty')),
+            'executed_quantity':as_float(item.get('executed_quantity') or item.get('filled_quantity')),
+            'updated_at':item.get('updated_at') or item.get('submitted_at') or item.get('created_at'),
+        })
+    return orders
+
+def parse_event_day(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value / 1000 if value > 10_000_000_000 else value, timezone.utc).date()
+        except (ValueError, OSError, OverflowError):
+            return None
+    text = str(value).strip().replace('Z', '+00:00')
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            return None
+
+def symbol_from_counter(value):
+    parts = str(value or '').split('/')
+    if len(parts) >= 3 and parts[-2] in {'US', 'HK'}:
+        return normalized_symbol(parts[-1] + '.' + parts[-2])
+    return normalized_symbol(value)
+
+def normalize_finance_events(data, requested_symbols, today=None):
+    today = today or datetime.now(timezone.utc).date()
+    requested = {normalized_symbol(symbol) for symbol in requested_symbols}
+    events, seen = [], set()
+    date_keys = ('event_date', 'report_date', 'announce_date', 'date', 'calendar_date', 'timestamp', 'time')
+    for item in nested_dicts(data):
+        event_day = None
+        for key in date_keys:
+            event_day = parse_event_day(item.get(key))
+            if event_day:
+                break
+        raw_symbol = item.get('symbol') or item.get('stock_symbol') or item.get('counter_id') or item.get('counter')
+        symbol = symbol_from_counter(raw_symbol)
+        title = item.get('title') or item.get('name') or item.get('event_name') or item.get('report_type')
+        if not event_day or not symbol or symbol not in requested or not title:
+            continue
+        key = (symbol, str(event_day), str(title))
+        if key in seen:
+            continue
+        seen.add(key)
+        days_until = (event_day - today).days
+        events.append({
+            'symbol':symbol, 'date':str(event_day), 'days_until':days_until,
+            'title':str(title), 'event_type':str(item.get('type') or item.get('event_type') or 'earnings'),
+            'session':item.get('session') or item.get('market_session'), 'source':'longbridge_finance_calendar',
+        })
+    return sorted((item for item in events if item['days_until'] >= 0), key=lambda item:(item['date'], item['symbol']))
+
+def get_upcoming_finance_events(symbols, force=False, today=None):
+    today = today or datetime.now(timezone(timedelta(hours=8))).date()
+    clean = sorted({normalized_symbol(symbol) for symbol in symbols if normalized_symbol(symbol)})
+    signature = '|'.join(clean) + '|' + str(today)
+    if not force and EVENT_CACHE['data'] is not None and EVENT_CACHE['signature'] == signature and time.time() - EVENT_CACHE['saved_at'] < 30 * 60:
+        return EVENT_CACHE['data']
+    if not clean:
+        return {'events':[], 'complete':True, 'source':'longbridge_finance_calendar', 'fetched_at':iso_now()}
+    params = {
+        'date':str(today), 'date_end':str(today + timedelta(days=7)), 'count':'100', 'offset':'0', 'next':'later',
+        'types[]':['report', 'financial'], 'counter_ids[]':[longbridge_counter_id(symbol) for symbol in clean],
+    }
+    try:
+        raw = longbridge_request('/v1/quote/finance_calendar', params)
+        data = {'events':normalize_finance_events(raw, clean, today), 'complete':True, 'source':'longbridge_finance_calendar', 'fetched_at':iso_now()}
+    except Exception as exc:
+        data = {'events':[], 'complete':False, 'error':str(exc), 'source':'longbridge_finance_calendar', 'fetched_at':iso_now()}
+    EVENT_CACHE.update({'saved_at':time.time(), 'signature':signature, 'data':data})
+    return data
 
 def sina_codes(symbols):
     codes, mapping = ['gb_$inx', 'gb_ixic'], {'gb_$inx':'SPX.US', 'gb_ixic':'IXIC.US'}
@@ -650,7 +776,7 @@ def aggregate_positions(stock_data):
         positions.append(item)
     return sorted(positions, key=lambda item: (item['market'], item['symbol']))
 
-def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetched_at=None, source_errors=None):
+def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetched_at=None, source_errors=None, orders_data=None, optional_source_errors=None):
     positions = aggregate_positions(stock_data)
     fx = rates_to_cny(exchange_data)
     for item in positions:
@@ -663,6 +789,9 @@ def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetc
     balances = balance_data.get('list', [])
     cash_by_currency = {}
     net_assets_cny = buy_power_cny = 0.0
+    init_margin_cny = maintenance_margin_cny = margin_call_cny = 0.0
+    max_finance_cny = remaining_finance_cny = 0.0
+    risk_levels = []
     missing_conversion = []
     for balance in balances:
         currency, rate = str(balance.get('currency') or '').upper(), fx.get(str(balance.get('currency') or '').upper())
@@ -671,6 +800,13 @@ def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetc
             continue
         net_assets_cny += as_float(balance.get('net_assets')) * rate
         buy_power_cny += as_float(balance.get('buy_power')) * rate
+        init_margin_cny += as_float(balance.get('init_margin')) * rate
+        maintenance_margin_cny += as_float(balance.get('maintenance_margin')) * rate
+        margin_call_cny += as_float(balance.get('margin_call')) * rate
+        max_finance_cny += as_float(balance.get('max_finance_amount')) * rate
+        remaining_finance_cny += as_float(balance.get('remaining_finance_amount')) * rate
+        if balance.get('risk_level') is not None:
+            risk_levels.append(str(balance.get('risk_level')))
         for cash in balance.get('cash_infos', []):
             cash_currency = str(cash.get('currency') or '').upper()
             cash_by_currency[cash_currency] = cash_by_currency.get(cash_currency, 0) + as_float(cash.get('available_cash'))
@@ -684,9 +820,12 @@ def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetc
     missing_fx = [item['currency'] for item in positions if item['fx_to_cny'] is None]
     primary_balance = balances[0] if len(balances) == 1 else None
     errors = source_errors or {}
+    pending_orders = normalize_pending_orders(orders_data or {})
     return {
         'source':'longbridge_openapi', 'fetched_at':fetched_at or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'positions':positions, 'prices':prices, 'fx_to_cny':fx,
+        'price_source':'sina_tencent_fallback', 'price_source_status':'degraded_until_longbridge_quote_sdk',
+        'pending_orders':pending_orders, 'order_data_complete':'orders' not in (optional_source_errors or {}),
         'account':{
             'net_assets_cny':round(net_assets_cny, 2), 'total_cash_cny':round(total_cash_cny, 2),
             'buy_power_cny':round(buy_power_cny, 2), 'cash_by_currency':cash_by_currency,
@@ -694,11 +833,14 @@ def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetc
             'net_assets_native':as_float(primary_balance.get('net_assets')) if primary_balance else round(net_assets_cny, 2),
             'total_cash_native':as_float(primary_balance.get('total_cash')) if primary_balance else round(total_cash_cny, 2),
             'buy_power_native':as_float(primary_balance.get('buy_power')) if primary_balance else round(buy_power_cny, 2),
+            'risk_levels':sorted(set(risk_levels)), 'init_margin_cny':round(init_margin_cny, 2),
+            'maintenance_margin_cny':round(maintenance_margin_cny, 2), 'margin_call_cny':round(margin_call_cny, 2),
+            'max_finance_amount_cny':round(max_finance_cny, 2), 'remaining_finance_amount_cny':round(remaining_finance_cny, 2),
             'balances':balances,
         },
         'complete':not (missing_prices or missing_fx or missing_conversion or errors),
         'missing_prices':missing_prices, 'missing_currencies':sorted(set(missing_fx + missing_conversion)),
-        'source_errors':errors,
+        'source_errors':errors, 'optional_source_errors':optional_source_errors or {},
     }
 
 def get_account_snapshot(force=False):
@@ -706,11 +848,12 @@ def get_account_snapshot(force=False):
     if not force and cache['snapshot'] and time.time() - cache['saved_at'] < 15:
         return cache['snapshot']
     source_errors = {}
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {
             'positions':pool.submit(longbridge_request, '/v1/asset/stock'),
             'account':pool.submit(longbridge_request, '/v1/asset/account'),
             'exchange_rates':pool.submit(longbridge_request, '/v1/asset/exchange_rates'),
+            'orders':pool.submit(longbridge_request, '/v1/trade/order/today'),
         }
         results = {}
         for name, future in futures.items():
@@ -728,7 +871,10 @@ def get_account_snapshot(force=False):
     except Exception as exc:
         prices = {}
         source_errors['prices'] = str(exc)
-    snapshot = build_account_snapshot(stock_data, balance_data, exchange_data, prices, source_errors=source_errors)
+    optional_errors = {}
+    if 'orders' in source_errors:
+        optional_errors['orders'] = source_errors.pop('orders')
+    snapshot = build_account_snapshot(stock_data, balance_data, exchange_data, prices, source_errors=source_errors, orders_data=results.get('orders'), optional_source_errors=optional_errors)
     cache.update({'saved_at':time.time(), 'snapshot':snapshot})
     return snapshot
 
@@ -829,6 +975,15 @@ def portfolio_risk_from_histories(snapshot, histories, policy=None):
         warnings.append('美港股收盘时点不同，跨市场相关性存在时差偏差')
     if positions:
         warnings.append('暂无历史汇率序列：波动率基于本币股票收益与当前权重，未覆盖汇率历史风险')
+    account = snapshot.get('account') or {}
+    if as_float(account.get('margin_call_cny')) > 0:
+        warnings.append(f"账户存在追缴保证金要求 ¥{as_float(account.get('margin_call_cny')):,.2f}，禁止新增风险")
+    if account.get('risk_levels'):
+        warnings.append('Longbridge账户风险等级：' + '、'.join(account['risk_levels']))
+    if snapshot.get('pending_orders'):
+        warnings.append(f"当前有 {len(snapshot['pending_orders'])} 笔未完成订单，交易后敞口尚未完全反映在持仓中")
+    if snapshot.get('order_data_complete') is False:
+        warnings.append('未完成订单接口不可用，订单风险覆盖不完整，禁止新增仓位')
     return {
         'model_version':'portfolio-risk-v1', 'model_status':'shadow', 'policy_version':policy['version'],
         'policy_status':'confirmed' if policy.get('confirmed_by_user') else 'unconfirmed', 'snapshot_id':snapshot_id,
@@ -842,6 +997,10 @@ def portfolio_risk_from_histories(snapshot, histories, policy=None):
             'max_drawdown_peak_date':peak_date, 'max_drawdown_trough_date':trough_date,
             'gross_exposure_pct':round(gross_value/(net_assets or 1)*100, 2), 'net_exposure_pct':round(net_value/(net_assets or 1)*100, 2),
             'cash_pct':round(as_float((snapshot.get('account') or {}).get('total_cash_cny'))/(net_assets or 1)*100, 2),
+            'init_margin_cny':round(as_float(account.get('init_margin_cny')), 2),
+            'maintenance_margin_cny':round(as_float(account.get('maintenance_margin_cny')), 2),
+            'margin_call_cny':round(as_float(account.get('margin_call_cny')), 2),
+            'pending_order_count':len(snapshot.get('pending_orders') or []),
         },
         'risk_contributions':risk_contributions, 'correlation_risks':correlations, 'potential_diversifiers':diversifiers,
         'concentration':{'top1_pct':round((position_weights[:1] or [0])[0]*100, 2), 'top5_pct':round(sum(position_weights[:5])*100, 2), 'hhi':round(sum(value*value for value in position_weights), 4), 'sector_weights':sector_weights, 'company_group_weights':company_weights, 'currency_weights':currency_weights},
@@ -850,7 +1009,7 @@ def portfolio_risk_from_histories(snapshot, histories, policy=None):
             {'scenario':'美元及港币兑人民币下跌5%', 'estimated_portfolio_impact_pct':round(-.05 * sum(item['weight_pct'] for item in currency_weights if item['key'] in {'USD','HKD'}), 2)},
         ],
         'rebalance':rebalance,
-        'quality':{'history_days':len(common_dates), 'position_coverage_pct':round(covered_value/(gross_value or 1)*100, 2), 'fx_history_covered':False, 'cross_market_lag_warning':any('收盘时点' in item for item in warnings), 'warnings':warnings},
+        'quality':{'history_days':len(common_dates), 'position_coverage_pct':round(covered_value/(gross_value or 1)*100, 2), 'fx_history_covered':False, 'order_data_complete':snapshot.get('order_data_complete', False), 'cross_market_lag_warning':any('收盘时点' in item for item in warnings), 'warnings':warnings},
         'source':'longbridge_account+public_history_fallback', 'fetched_at':iso_now(),
     }
 
@@ -882,11 +1041,16 @@ def live_position_context(snapshot, position):
     group = company_group_symbol(position['symbol'])
     company_value = sum(as_float(item.get('market_value_cny')) for item in snapshot['positions'] if company_group_symbol(item['symbol']) == group)
     account = snapshot.get('account') or {}
+    symbol_orders = [item for item in snapshot.get('pending_orders', []) if normalized_symbol(item.get('symbol')) == normalized_symbol(position['symbol'])]
     return {
         'position_weight':position_value / invested, 'sector_weight':sector_value / invested,
         'company_weight':company_value / invested, 'company_group':group,
         'cash_ratio':as_float(account.get('total_cash_cny')) / (as_float(account.get('net_assets_cny')) or 1),
         'annual_target':20, 'account_fetched_at':snapshot.get('fetched_at'), 'account_source':snapshot.get('source'),
+        'account_risk_levels':account.get('risk_levels') or [], 'margin_call_cny':as_float(account.get('margin_call_cny')),
+        'order_data_complete':snapshot.get('order_data_complete', False),
+        'pending_orders':symbol_orders, 'pending_buy_quantity':sum(item['quantity']-item['executed_quantity'] for item in symbol_orders if item.get('side') == 'buy'),
+        'pending_sell_quantity':sum(item['quantity']-item['executed_quantity'] for item in symbol_orders if item.get('side') == 'sell'),
     }
 
 def score_discovery_candidate(closes, sector_weight=0.0):
@@ -1150,6 +1314,13 @@ def validate_decision(result, body, risk_flags):
     price = max(as_float(body.get('price')), 0.01)
     context = body.get('portfolio_context') or {}
     concentrated = as_float(context.get('position_weight')) >= 0.18 or as_float(context.get('company_weight')) >= 0.20
+    account_or_event_block = (
+        as_float(context.get('margin_call_cny')) > 0
+        or as_float(context.get('pending_buy_quantity')) > 0
+        or context.get('order_data_complete') is False
+        or body.get('event_data_complete') is False
+        or any(0 <= int(as_float(item.get('days_until'), 99)) <= 3 for item in (body.get('upcoming_events') or []))
+    )
     if original_rating != final_rating:
         violations.append(f'模型原始评级 {original_rating} 已被前置硬风控调整为 {final_rating}')
         adjustments.append('保留硬风控调整后的评级')
@@ -1166,6 +1337,8 @@ def validate_decision(result, body, risk_flags):
         violations.append('评级为持有，但文字包含明确的加仓或减仓指令')
     if concentrated and final_rating in {'Buy', 'Overweight'}:
         violations.append('集中度超过硬上限，禁止新增仓位')
+    if account_or_event_block and final_rating in {'Buy', 'Overweight'}:
+        violations.append('保证金、订单状态或财报事件数据触发硬风控，禁止新增仓位')
 
     stop_loss = as_float(result.get('stop_loss'))
     price_target = as_float(result.get('price_target'))
@@ -1220,6 +1393,10 @@ def validate_decision(result, body, risk_flags):
         final_rating = 'Hold'
         result['position_sizing'] = '集中度超过硬上限，禁止新增仓位；仅维持现有仓位并等待敞口下降。'
         adjustments.append('集中度硬风控已将建议降级为持有')
+    if account_or_event_block and final_rating in {'Buy', 'Overweight'}:
+        final_rating = 'Hold'
+        result['position_sizing'] = '账户或事件硬风控已触发；等待保证金、订单或财报事件状态确认前不新增仓位。'
+        adjustments.append('账户/事件硬风控已将建议降级为持有')
 
     result['rating'] = final_rating
     stats = body.get('validation_context') or {}
@@ -1287,6 +1464,21 @@ def build_risk_flags(body):
         flags.append(f'板块占比 {sector_weight*100:.1f}%，主题暴露偏高')
     if company_weight >= 0.15:
         flags.append(f'同公司合并敞口 {company_weight*100:.1f}%（含跨市场持仓）')
+    if as_float(context.get('margin_call_cny')) > 0:
+        flags.append(f"账户存在追缴保证金要求 ¥{as_float(context.get('margin_call_cny')):,.2f}，硬风控禁止新增风险")
+    if as_float(context.get('pending_buy_quantity')) > 0:
+        flags.append(f"存在未完成买单 {as_float(context.get('pending_buy_quantity')):g} 股，禁止重复加仓")
+    if as_float(context.get('pending_sell_quantity')) > 0:
+        flags.append(f"存在未完成卖单 {as_float(context.get('pending_sell_quantity')):g} 股，建议等待成交状态确认")
+    if context.get('order_data_complete') is False:
+        flags.append('未完成订单数据暂不可用，订单风险覆盖不完整，禁止新增仓位')
+    upcoming_events = body.get('upcoming_events') or []
+    near_events = [item for item in upcoming_events if 0 <= int(as_float(item.get('days_until'), 99)) <= 3]
+    if near_events:
+        nearest = near_events[0]
+        flags.append(f"{nearest.get('date')} 临近事件：{nearest.get('title')}，禁止仅凭技术信号加仓")
+    if body.get('event_data_complete') is False:
+        flags.append('财报事件日历暂不可用，事件风险覆盖不完整')
     if as_float(body.get('return_pct')) <= -30:
         flags.append('当前回撤超过 30%，禁止仅因价格下跌而机械补仓')
     if as_float(body.get('cost')) <= 0:
@@ -1317,7 +1509,7 @@ def health():
         credential('LONGBRIDGE_APP_SECRET', 'LONGPORT_APP_SECRET'),
         credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN'),
     ))
-    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/investment-policy', '/market', '/portfolio-risk', '/factor-analysis', '/analysis']})
+    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'quote_source':'sina_tencent_fallback', 'quote_status':'degraded_until_longbridge_quote_sdk', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/events', '/investment-policy', '/market', '/portfolio-risk', '/factor-analysis', '/analysis']})
 
 @app.route('/session', methods=['POST', 'OPTIONS'])
 def create_session():
@@ -1390,6 +1582,19 @@ def factor_analysis():
     except Exception as exc:
         return jsonify({'error':'因子影子分析失败', 'detail':str(exc), 'symbol':symbol, 'source':'factor_model', 'retryable':True, 'fetched_at':iso_now()}), 503
 
+@app.route('/events')
+def events():
+    if not request_authorized():
+        return auth_error()
+    try:
+        snapshot = get_account_snapshot()
+        symbols = [item['symbol'] for item in snapshot.get('positions', [])]
+        data = get_upcoming_finance_events(symbols, force=request.args.get('force') == '1')
+        status = 200 if data.get('complete') else 206
+        return jsonify(data), status
+    except Exception as exc:
+        return jsonify({'error':'财报事件日历获取失败', 'detail':str(exc), 'source':'longbridge_finance_calendar', 'retryable':True, 'fetched_at':iso_now()}), 503
+
 @app.route('/recommendations', methods=['POST', 'OPTIONS'])
 def recommendations():
     if request.method == 'OPTIONS':
@@ -1423,6 +1628,14 @@ def recommendations():
         if candidate:
             ranked.append(candidate)
     ranked.sort(key=lambda item: (item['score'], item['diversification_score'], item['momentum_60d']), reverse=True)
+    event_data = get_upcoming_finance_events([item['symbol'] for item in ranked[:5]])
+    for item in ranked[:5]:
+        item_events = [event for event in event_data.get('events', []) if normalized_symbol(event.get('symbol')) == normalized_symbol(item['symbol'])]
+        item['upcoming_events'] = item_events
+        item['event_data_complete'] = event_data.get('complete', False)
+        if any(0 <= event['days_until'] <= 3 for event in item_events):
+            item['event_guard'] = 'near_event'
+            item['summary'] += ' 三天内存在财报事件，事件落地前仅观察，不按技术信号建仓。'
     policy = investment_policy()
     if not policy.get('confirmed_by_user'):
         for item in ranked:
@@ -1448,7 +1661,7 @@ def prices():
         return auth_error()
     try:
         snapshot = get_account_snapshot()
-        return jsonify({'prices':snapshot['prices'], 'updated':snapshot['fetched_at'], 'source':snapshot['source']})
+        return jsonify({'prices':snapshot['prices'], 'updated':snapshot['fetched_at'], 'source':snapshot.get('price_source'), 'source_status':snapshot.get('price_source_status'), 'account_source':snapshot['source']})
     except Exception as e:
         return jsonify({'error':'实时账户行情获取失败', 'detail':str(e)}), 503
 
@@ -1498,6 +1711,7 @@ def analysis():
         history_data = fetch_symbol_history(symbol, force=True)
     except Exception as exc:
         return jsonify({'error':'真实历史行情不可用，已阻断个股分析', 'detail':str(exc), 'symbol':symbol}), 503
+    event_data = get_upcoming_finance_events([symbol])
     body.update({
         'symbol':position['symbol'], 'name':position['name'], 'ccy':position['currency'],
         'cost':position['cost_price'], 'price':position['price'], 'qty':position['quantity'],
@@ -1505,6 +1719,8 @@ def analysis():
         'sector':position['sector'], 'portfolio_context':live_position_context(snapshot, position),
         'price_updated_at':snapshot['fetched_at'], 'account_verified':True,
         'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'],
+        'upcoming_events':event_data.get('events', []), 'event_data_complete':event_data.get('complete', False),
+        'event_data_source':event_data.get('source'),
     })
     factor_result = factor_analysis_from_history(symbol, history_data)
     try:
@@ -1567,9 +1783,11 @@ def analysis():
         'decision_version': 3, 'rating_source':'deterministic_policy_engine',
         'desired_weight':None, 'binding_constraint':'policy_not_configured' if not policy.get('confirmed_by_user') else 'shadow_models_not_advisory',
         'risk_flags': risk_flags,
-        'data_scope': 'verified_live_longbridge_position_price_portfolio_and_real_daily_technical',
+        'data_scope': 'verified_live_longbridge_position_cost_account_with_third_party_quote_and_daily_history_fallback',
+        'price_source':snapshot.get('price_source'), 'price_source_status':snapshot.get('price_source_status'),
         'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'],
         'factor_analysis':factor_result, 'market_regime':market_result, 'portfolio_risk':portfolio_risk_result, 'narrative':narrative,
+        'upcoming_events':event_data.get('events', []), 'event_data_complete':event_data.get('complete', False),
         'audit':{'data_snapshot_id':portfolio_risk_result.get('snapshot_id'), 'factor_model_version':factor_result['model_version'], 'factor_model_status':factor_result['model_status'], 'risk_model_version':portfolio_risk_result.get('model_version'), 'policy_version':policy['version'], 'consistency':result.get('consistency', {}).get('status')},
         'generated_at': iso_now(),
     })
