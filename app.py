@@ -1617,17 +1617,30 @@ def no_cache(response):
 
 @app.route('/health')
 def health():
+    import platform, sys
     configured = all((
         credential('LONGBRIDGE_APP_KEY', 'LONGPORT_APP_KEY'),
         credential('LONGBRIDGE_APP_SECRET', 'LONGPORT_APP_SECRET'),
         credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN'),
     ))
+    quote_sdk_error = None
+    quote_sdk_path = None
     try:
         import longport
         quote_sdk_available = True
-    except (ImportError, OSError):
+        quote_sdk_path = getattr(longport, '__file__', None)
+    except (ImportError, OSError) as exc:
         quote_sdk_available = False
-    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'quote_source_policy':'longbridge_sdk_then_sina_tencent_fallback', 'quote_sdk_available':quote_sdk_available, 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/events', '/investment-policy', '/market', '/portfolio-risk', '/factor-analysis', '/analysis']})
+        quote_sdk_error = f'{type(exc).__name__}: {exc}'
+    return jsonify({
+        'status':'ok', 'account_source':'longbridge_openapi',
+        'quote_source_policy':'longbridge_sdk_then_sina_tencent_fallback',
+        'quote_sdk_available':quote_sdk_available, 'quote_sdk_error':quote_sdk_error,
+        'quote_sdk_path':quote_sdk_path,
+        'runtime':{'python':platform.python_version(), 'implementation':platform.python_implementation(), 'machine':platform.machine(), 'libc':platform.libc_ver(), 'executable':sys.executable},
+        'account_configured':configured, 'session_configured':session_configured(),
+        'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/events', '/investment-policy', '/market', '/portfolio-risk', '/factor-analysis', '/analysis'],
+    })
 
 @app.route('/session', methods=['POST', 'OPTIONS'])
 def create_session():
