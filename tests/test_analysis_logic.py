@@ -33,6 +33,7 @@ def load_logic():
         'deterministic_price_plan', 'factor_analysis_from_history',
         'longbridge_symbol', 'longbridge_counter_id', 'nested_dicts',
         'quote_timestamp', 'latest_quote_point',
+        'normalize_longbridge_candlesticks',
         'normalize_order_status', 'normalize_pending_orders', 'parse_event_day',
         'symbol_from_counter', 'normalize_finance_events',
     }
@@ -317,6 +318,17 @@ class DecisionAuditTests(unittest.TestCase):
         result=self.logic['latest_quote_point'](quote)
         self.assertEqual(result['session'],'post_market')
         self.assertEqual(result['price'],198.95)
+
+    def test_longbridge_candlesticks_are_sorted_and_deduplicated(self):
+        rows=[
+            {'timestamp':'2026-07-31T00:00:00Z','open':'198','high':'202','low':'197','close':'200.75','volume':'100'},
+            {'timestamp':'2026-07-30T00:00:00Z','open':'195','high':'199','low':'194','close':'195.04','volume':'90'},
+            {'timestamp':'2026-07-31T00:00:00Z','open':'198','high':'203','low':'197','close':'201','volume':'110'},
+        ]
+        result=self.logic['normalize_longbridge_candlesticks'](rows)
+        self.assertEqual([item['date'] for item in result],['2026-07-30','2026-07-31'])
+        self.assertEqual(result[-1]['close'],201)
+        self.assertEqual(result[-1]['volume'],110)
 
     def test_account_snapshot_exposes_margin_and_pending_orders(self):
         stock_data={'list':[{'stock_info':[{'symbol':'AAPL.US','quantity':'1','available_quantity':'1','cost_price':'100','currency':'USD','market':'US'}]}]}

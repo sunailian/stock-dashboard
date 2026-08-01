@@ -605,7 +605,8 @@ function applyStructuredAnalysis(p,data,cached=false){
   updateAdvicePriceLines(p,data);
   const source={deepseek_structured:'DeepSeek结构化分析',rule_fallback:'规则回退',rule_fallback_after_error:'AI失败·规则回退','deterministic_policy_engine':'确定性策略引擎','deterministic_policy_engine+deepseek_narrative':'确定性策略引擎 · DeepSeek仅解释','deterministic_policy_engine+narrative_fallback':'确定性策略引擎 · 规则解释'}[data.source]||data.source;
   const factorStatus=data.factor_analysis?.model_status==='shadow'?' · 多因子影子模式未参与评级':'';
-  document.getElementById('analysis-meta').textContent=`${source} · 置信度 ${data.confidence||0}%${factorStatus} · ${cached?'缓存结果':'刚刚生成'} · 2小时有效 / 价格变动1%自动更新`;
+  const historySource=data.history_source?` · 日线 ${data.history_source}`:'';
+  document.getElementById('analysis-meta').textContent=`${source} · 置信度 ${data.confidence||0}%${factorStatus}${historySource} · ${cached?'缓存结果':'刚刚生成'} · 2小时有效 / 价格变动1%自动更新`;
   const risk=document.getElementById('analysis-risk'),flags=[...(data.risk_flags||[]),...(data.factor_analysis?.quality?.warnings||[])];risk.textContent=flags.join('；');risk.classList.toggle('show',flags.length>0);
   renderEvidence('analysis-bull',data.bull_case);renderEvidence('analysis-bear',data.bear_case);
   document.getElementById('analysis-invalidation').textContent=(data.invalidation_conditions||[]).join('；')||'暂无';
@@ -669,7 +670,7 @@ async function loadHeldHistory(p,force=false){
   const data=await resp.json();if(!resp.ok)throw new Error(data.error+(data.detail?'：'+data.detail:''));
   if(activeDetailSymbol!==p.sym)return data;
   const points=(data.points||[]).slice(-120),currency=nativeCurrency(p.ccy),technical=data.technical||{};
-  document.querySelector('.stock-detail-chart-title').textContent=`真实日线 · 最近${points.length}个交易日 ｜ ${technical.trend||'--'}趋势 ｜ 20日波动 ${(Number(technical.volatility_20d||0)*100).toFixed(1)}%`;
+  document.querySelector('.stock-detail-chart-title').textContent=`真实日线 · ${data.source||'来源未知'} ｜ 最近${points.length}个交易日 ｜ ${technical.trend||'--'}趋势 ｜ 20日波动 ${(Number(technical.volatility_20d||0)*100).toFixed(1)}%`;
   if(detailChart)detailChart.dispose();detailChart=echarts.init(document.getElementById('stock-detail-chart'));
   detailChart.setOption({animationDuration:500,tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.96)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11},valueFormatter:v=>currency+Number(v).toFixed(2)},grid:{left:56,right:18,top:18,bottom:28},xAxis:{type:'category',data:points.map(item=>item.date),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9,hideOverlap:true}},yAxis:{type:'value',scale:true,axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>currency+Number(v).toFixed(2)},splitLine:{lineStyle:{color:'rgba(255,255,255,.04)'}}},series:[{name:'真实收盘价',type:'line',data:points.map(item=>item.close),smooth:false,symbol:'none',lineStyle:{color:'#ff6a00',width:2},areaStyle:{color:'rgba(255,80,0,.10)'},markLine:{silent:true,symbol:'none',data:p.cost>0?[{name:'券商成本',yAxis:p.cost,lineStyle:{color:'rgba(0,229,255,.55)',type:'dashed',width:1}}]:[]}}]});
   return data;

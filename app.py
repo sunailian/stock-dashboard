@@ -529,6 +529,43 @@ def fetch_market_prices(symbols):
         raise RuntimeError('；'.join(errors))
     return prices
 
+def normalize_longbridge_candlesticks(rows):
+    def field(obj, name):
+        return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+    points = []
+    for row in rows or []:
+        timestamp = field(row, 'timestamp') or field(row, 'time')
+        if isinstance(timestamp, datetime):
+            day = timestamp.date().isoformat()
+        else:
+            day = str(timestamp or '')[:10]
+        close = as_float(field(row, 'close'))
+        if len(day) != 10 or close <= 0:
+            continue
+        points.append({
+            'date':day, 'open':as_float(field(row, 'open')), 'close':close,
+            'high':as_float(field(row, 'high')), 'low':as_float(field(row, 'low')),
+            'volume':as_float(field(row, 'volume')), 'turnover':as_float(field(row, 'turnover')),
+        })
+    by_date = {item['date']:item for item in points}
+    return [by_date[day] for day in sorted(by_date)]
+
+def fetch_longbridge_history(symbol):
+    try:
+        from longport.openapi import AdjustType, Period, TradeSessions
+    except (ImportError, OSError) as exc:
+        raise RuntimeError('Longport历史行情SDK不可用') from exc
+    end = datetime.now(timezone(timedelta(hours=8))).date()
+    start = end - timedelta(days=520)
+    rows = longbridge_quote_context().history_candlesticks_by_date(
+        longbridge_symbol(symbol), Period.Day, AdjustType.ForwardAdjust,
+        start, end, TradeSessions.Intraday,
+    )
+    points = normalize_longbridge_candlesticks(rows)
+    if len(points) < 60:
+        raise ValueError(f'{normalized_symbol(symbol)} Longbridge历史行情不足')
+    return points
+
 def tencent_history_symbol(symbol):
     symbol = normalized_symbol(symbol)
     if symbol == 'HSI.HK':
@@ -661,16 +698,12 @@ def get_market_regime(force=False):
     data = {
         'model_version':'market-regime-v1', 'model_status':'shadow', 'markets':markets,
         'portfolio_weighted_regime':('aggressive' if weighted_score is not None and weighted_score >= 65 else 'defensive' if weighted_score is not None and weighted_score <= 40 else 'balanced' if weighted_score is not None else 'unavailable'),
-        'policy_version':policy['version'], 'source':'longbridge+public_history_fallback', 'fetched_at':iso_now(),
+        'policy_version':policy['version'], 'source':'longbridge_history_with_public_fallback', 'fetched_at':iso_now(),
     }
     MARKET_CACHE.update({'saved_at':time.time(), 'data':data})
     return data
 
-def fetch_symbol_history(symbol, force=False):
-    symbol = normalized_symbol(symbol)
-    cached = HISTORY_CACHE.get(symbol)
-    if not force and cached and time.time() - cached['saved_at'] < 6 * 60 * 60:
-        return cached['data']
+def fetch_tencent_history(symbol):
     provider_symbol = tencent_history_symbol(symbol)
     url = f'https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param={provider_symbol},day,,,320'
     req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0 stock-dashboard/1.0', 'Accept':'application/json', 'Referer':'https://gu.qq.com/'})
@@ -684,7 +717,27 @@ def fetch_symbol_history(symbol, force=False):
         points.append({'date':str(row[0]), 'open':as_float(row[1]), 'close':as_float(row[2]), 'high':as_float(row[3]), 'low':as_float(row[4]), 'volume':as_float(row[5])})
     if len(points) < 60:
         raise ValueError(f'{symbol} 真实历史行情不足')
-    data = {'symbol':symbol, 'provider_symbol':provider_symbol, 'as_of':points[-1]['date'], 'source':'腾讯证券真实日线', 'points':points[-250:], 'technical':technical_snapshot(points[-250:])}
+    return points, provider_symbol
+
+def fetch_symbol_history(symbol, force=False):
+    symbol = normalized_symbol(symbol)
+    cached = HISTORY_CACHE.get(symbol)
+    if not force and cached and time.time() - cached['saved_at'] < 6 * 60 * 60:
+        return cached['data']
+    source_error = None
+    try:
+        points = fetch_longbridge_history(symbol)
+        provider_symbol = longbridge_symbol(symbol)
+        source, source_status = 'Longbridge前复权日线', 'live'
+    except Exception as exc:
+        source_error = str(exc)
+        points, provider_symbol = fetch_tencent_history(symbol)
+        source, source_status = '腾讯证券前复权日线（降级）', 'degraded'
+    data = {
+        'symbol':symbol, 'provider_symbol':provider_symbol, 'as_of':points[-1]['date'],
+        'source':source, 'source_status':source_status, 'source_error':source_error,
+        'points':points[-250:], 'technical':technical_snapshot(points[-250:]),
+    }
     HISTORY_CACHE[symbol] = {'saved_at':time.time(), 'data':data}
     return data
 
@@ -1016,6 +1069,8 @@ def portfolio_risk_from_histories(snapshot, histories, policy=None):
         if history and len(history.get('points') or []) >= 60:
             returns_by_symbol[symbol] = daily_returns(history['points'])
             covered_value += abs(as_float(item.get('market_value_cny')))
+            if history.get('source_status') == 'degraded':
+                warnings.append(f"{symbol} 历史日线已降级到腾讯：{history.get('source_error') or 'Longbridge历史接口不可用'}")
         else:
             warnings.append(f'{symbol} 历史行情不足，未参与协方差计算')
     gross_value = sum(abs(as_float(item.get('market_value_cny'))) for item in positions)
@@ -1122,8 +1177,8 @@ def portfolio_risk_from_histories(snapshot, histories, policy=None):
             {'scenario':'美元及港币兑人民币下跌5%', 'estimated_portfolio_impact_pct':round(-.05 * sum(item['weight_pct'] for item in currency_weights if item['key'] in {'USD','HKD'}), 2)},
         ],
         'rebalance':rebalance,
-        'quality':{'history_days':len(common_dates), 'position_coverage_pct':round(covered_value/(gross_value or 1)*100, 2), 'fx_history_covered':False, 'order_data_complete':snapshot.get('order_data_complete', False), 'cross_market_lag_warning':any('收盘时点' in item for item in warnings), 'warnings':warnings},
-        'source':'longbridge_account+public_history_fallback', 'fetched_at':iso_now(),
+        'quality':{'history_days':len(common_dates), 'position_coverage_pct':round(covered_value/(gross_value or 1)*100, 2), 'fx_history_covered':False, 'order_data_complete':snapshot.get('order_data_complete', False), 'history_sources':{symbol:{'source':history.get('source'), 'status':history.get('source_status')} for symbol, history in histories.items()}, 'cross_market_lag_warning':any('收盘时点' in item for item in warnings), 'warnings':warnings},
+        'source':'longbridge_account+longbridge_history_with_public_fallback', 'fetched_at':iso_now(),
     }
 
 def get_portfolio_risk(force=False, snapshot=None):
@@ -1288,19 +1343,20 @@ def build_discovery_recommendation(meta, history, sector_weight=0.0):
         'action_steps': ['等待价格进入建议区间', '首批只建立目标仓位的一半', '跌破止损价退出并记录验证结果'],
         'invalidation_conditions': ['日线跌破200日均线', '60日动量转负', '跌破风险价位'],
         'history': [{'date': d, 'close': round(c, 2)} for d, c in zip(history.get('dates', [])[-120:], history.get('closes', [])[-120:])],
-        'as_of': history.get('as_of'), 'source': history.get('source', '腾讯证券日线'),
+        'as_of': history.get('as_of'), 'source': history.get('source', '公开日线降级源'),
+        'source_status':history.get('source_status'),
     }
 
 def fetch_candidate_history(meta):
-    provider_symbol = meta['provider_symbol']
-    url = f'https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param={provider_symbol},day,,,320'
-    req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0 stock-dashboard/1.0', 'Accept':'application/json', 'Referer':'https://gu.qq.com/'})
-    payload = json.loads(urllib.request.urlopen(req, timeout=12, context=CTX).read())
-    rows = payload['data'][provider_symbol].get('qfqday') or payload['data'][provider_symbol].get('day') or []
-    points = [(str(row[0]), as_float(row[2])) for row in rows if len(row) >= 3 and as_float(row[2]) > 0]
+    history = fetch_symbol_history(meta['symbol'])
+    points = [(item['date'], as_float(item['close'])) for item in history.get('points', []) if as_float(item.get('close')) > 0]
     if len(points) < 205:
         raise ValueError(f"{meta['symbol']} historical data is insufficient")
-    return {'dates':[p[0] for p in points], 'closes':[p[1] for p in points], 'as_of':points[-1][0], 'source':'腾讯证券日线'}
+    return {
+        'dates':[p[0] for p in points], 'closes':[p[1] for p in points],
+        'as_of':points[-1][0], 'source':history.get('source'),
+        'source_status':history.get('source_status'), 'source_error':history.get('source_error'),
+    }
 
 def discovery_market_data():
     cache = DISCOVERY_MARKET_CACHE
@@ -1849,7 +1905,7 @@ def analysis():
         'return_pct':((position['price'] - position['cost_price']) / abs(position['cost_price']) * 100) if position['cost_price'] else 0,
         'sector':position['sector'], 'portfolio_context':live_position_context(snapshot, position),
         'price_updated_at':snapshot['fetched_at'], 'account_verified':True,
-        'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'],
+        'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'], 'history_source_status':history_data.get('source_status'),
         'upcoming_events':event_data.get('events', []), 'event_data_complete':event_data.get('complete', False),
         'event_data_source':event_data.get('source'),
     })
@@ -1916,7 +1972,7 @@ def analysis():
         'risk_flags': risk_flags,
         'data_scope': 'verified_live_longbridge_position_cost_account_and_preferred_quote_with_audited_fallback',
         'price_source':snapshot.get('price_source'), 'price_source_status':snapshot.get('price_source_status'),
-        'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'],
+        'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'], 'history_source_status':history_data.get('source_status'),
         'factor_analysis':factor_result, 'market_regime':market_result, 'portfolio_risk':portfolio_risk_result, 'narrative':narrative,
         'upcoming_events':event_data.get('events', []), 'event_data_complete':event_data.get('complete', False),
         'audit':{'data_snapshot_id':portfolio_risk_result.get('snapshot_id'), 'factor_model_version':factor_result['model_version'], 'factor_model_status':factor_result['model_status'], 'risk_model_version':portfolio_risk_result.get('model_version'), 'policy_version':policy['version'], 'consistency':result.get('consistency', {}).get('status')},
