@@ -141,7 +141,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 @media(min-width:769px){
   html{min-height:100%;overflow-x:hidden;overflow-y:auto}
   body{min-width:0;min-height:100%;height:auto;overflow-x:hidden;overflow-y:auto}
-  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 210px minmax(246px,1fr) auto;grid-template-areas:'header header header' 'sector hero alloc' 'rank trend perf' 'us . hk' 'rec rec rec';gap:12px;padding:0 12px 12px;overflow:visible}
+  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 246px minmax(246px,1fr) auto;grid-template-areas:'header header header' 'sector hero alloc' 'us trend rank' 'hk . perf' 'rec rec rec';gap:12px;padding:0 12px 12px;overflow:visible}
   #header{position:relative;grid-area:header;inset:auto;width:auto;height:auto;padding:0 12px}
   #fs-btn{top:22px;right:12px}
   #hero{position:relative;grid-area:hero;inset:auto;width:auto;height:auto;min-width:0}
@@ -169,7 +169,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #stage{min-height:100vh;padding-bottom:16px}
 }
 @media(max-width:900px) and (min-width:769px){
-  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px minmax(246px,1fr) auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'rank perf' 'us hk' 'rec rec'}
+  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px minmax(246px,1fr) auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'us rank' 'hk perf' 'rec rec'}
 }
 @media(max-width:1100px) and (min-width:769px){
   .health-head{grid-template-columns:130px minmax(180px,1fr) minmax(220px,1fr);gap:12px}.health-dims{gap:5px;padding-left:12px;padding-right:12px}.health-note{padding-left:12px;padding-right:12px}
@@ -250,13 +250,13 @@ if(sessionToken)document.getElementById('auth-overlay').style.display='none';
 
   <!-- LEFT -->
   <div class="panel" id="sector-panel"><div class="panel-title">板块分布 · SECTOR</div><div class="chart-wrap" id="chart-sector"></div></div>
-  <div class="panel" id="rank-panel"><div class="panel-title">盈利排行 · TOP GAINERS</div><div class="chart-wrap" id="chart-rank"></div></div>
   <div class="panel" id="us-panel"><div class="panel-title">美股明细 · US DETAIL</div><div id="us-list"></div></div>
+  <div class="panel" id="hk-panel"><div class="panel-title">港股明细 · HK DETAIL</div><div id="hk-list"></div></div>
 
   <!-- RIGHT -->
   <div class="panel" id="alloc-panel"><div class="panel-title">持仓占比 · ALLOCATION</div><div class="chart-wrap" id="chart-alloc"></div></div>
+  <div class="panel" id="rank-panel"><div class="panel-title">盈利排行 · TOP GAINERS</div><div class="chart-wrap" id="chart-rank"></div></div>
   <div class="panel" id="perf-panel"><div class="panel-title">收益率分布 · P&L SPECTRUM</div><div class="chart-wrap" id="chart-perf"></div></div>
-  <div class="panel" id="hk-panel"><div class="panel-title">港股明细 · HK DETAIL</div><div id="hk-list"></div></div>
 
   <!-- PORTFOLIO HEALTH REPORT -->
   <div class="panel" id="health-panel">
