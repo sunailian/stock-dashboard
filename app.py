@@ -1,5 +1,6 @@
 """股票看板 API — 行情代理、组合外标的筛选与 AI 分析。"""
-import json, os, urllib.request, urllib.error, ssl, time, math, statistics, hashlib, hmac, base64
+import json, os, urllib.request, urllib.error, ssl, time, math, statistics, hashlib, hmac, base64, calendar
+from datetime import date, datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlencode
 from flask import Flask, request, jsonify
@@ -36,6 +37,7 @@ DISCOVERY_UNIVERSE = (
 DISCOVERY_ALIASES = {'BABA':'ALIBABA', '9988.HK':'ALIBABA'}
 DISCOVERY_MARKET_CACHE = {'saved_at': 0, 'items': {}}
 HISTORY_CACHE = {}
+PERFORMANCE_CACHE = {'saved_at':0, 'data':None}
 ACCOUNT_CACHE = {'saved_at': 0, 'snapshot': None}
 SECTOR_BY_SYMBOL = {
     'GOOG':'科技', 'AAPL':'科技', 'MSFT':'科技', 'NVDA':'半导体', 'TSLA':'汽车',
@@ -141,6 +143,9 @@ def longbridge_request(path, query_params=None):
                     message = error_payload.get('message') or error_payload.get('msg') or str(exc.reason)
                 except Exception:
                     code, message = exc.code, str(exc.reason)
+                if exc.code == 429 and attempt == 0:
+                    time.sleep(1.0)
+                    continue
                 raise RuntimeError(f'LongPort HTTP {exc.code}, code {code}: {message}') from exc
             except (urllib.error.URLError, TimeoutError, ssl.SSLError) as exc:
                 last_error = f'{host}: {exc}'
@@ -331,6 +336,79 @@ def fetch_symbol_history(symbol, force=False):
     data = {'symbol':symbol, 'provider_symbol':provider_symbol, 'as_of':points[-1]['date'], 'source':'腾讯证券真实日线', 'points':points[-250:], 'technical':technical_snapshot(points[-250:])}
     HISTORY_CACHE[symbol] = {'saved_at':time.time(), 'data':data}
     return data
+
+def utc_timestamp(day, end=False):
+    value = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+    return int(value.timestamp()) + (86399 if end else 0)
+
+def month_end_dates(start, end):
+    dates, year, month = [], start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        last = date(year, month, calendar.monthrange(year, month)[1])
+        dates.append(min(last, end))
+        month += 1
+        if month == 13:
+            year, month = year + 1, 1
+    return dates
+
+def max_drawdown_from_returns(values):
+    peak, drawdown = 1.0, 0.0
+    for value in values:
+        wealth = max(0.0, 1 + as_float(value))
+        peak = max(peak, wealth)
+        drawdown = min(drawdown, wealth / peak - 1 if peak else 0)
+    return drawdown
+
+def get_performance_snapshot(force=False, today=None):
+    cache = PERFORMANCE_CACHE
+    if not force and cache['data'] and time.time() - cache['saved_at'] < 30 * 60:
+        return cache['data']
+    end_day = today or date.today()
+    start_day = date(end_day.year, 1, 1)
+    period_ends = month_end_dates(start_day, end_day)
+    start_ts = str(utc_timestamp(start_day))
+    def fetch_period(period_end):
+        summary = longbridge_request('/v1/portfolio/profit-analysis-summary', {'start':start_ts, 'end':str(utc_timestamp(period_end, True))})
+        return period_end, summary
+    latest_period = period_ends[-1]
+    summaries = [fetch_period(latest_period)]
+    for period_end in period_ends[:-1]:
+        time.sleep(.35)
+        try:
+            summaries.append(fetch_period(period_end))
+        except Exception:
+            continue
+    summaries.sort(key=lambda item:item[0])
+    points = [{'date':period_end.isoformat(), 'return':as_float(summary.get('sum_profit_rate'))} for period_end, summary in summaries]
+    latest = summaries[-1][1]
+    ytd_return = as_float(latest.get('sum_profit_rate'))
+    elapsed_days = max(1, (end_day - start_day).days + 1)
+    annualized = (1 + ytd_return) ** (365 / elapsed_days) - 1 if ytd_return > -1 and elapsed_days >= 30 else None
+    benchmark = fetch_symbol_history('SPY')
+    benchmark_points = benchmark['points']
+    first = next((item for item in benchmark_points if item['date'] >= start_day.isoformat()), benchmark_points[0])
+    benchmark_series = []
+    for point in points:
+        eligible = [item for item in benchmark_points if item['date'] <= point['date']]
+        close = eligible[-1]['close'] if eligible else first['close']
+        benchmark_series.append({'date':point['date'], 'return':close / first['close'] - 1})
+    spy_ytd = benchmark_series[-1]['return'] if benchmark_series else None
+    result = {
+        'period':{'start':str(latest.get('start_date') or start_day), 'end':str(latest.get('end_date') or end_day), 'days':elapsed_days},
+        'currency':str(latest.get('currency') or 'USD'), 'current_total_asset':as_float(latest.get('current_total_asset')),
+        'initial_asset_value':as_float(latest.get('initial_asset_value')), 'ending_asset_value':as_float(latest.get('ending_asset_value')),
+        'invest_amount':as_float(latest.get('invest_amount')), 'total_profit':as_float(latest.get('sum_profit')),
+        'ytd_return':ytd_return, 'annualized_pace':annualized, 'goal_return':.20,
+        'goal_gap':None if annualized is None else .20 - annualized,
+        'monthly_max_drawdown':max_drawdown_from_returns([item['return'] for item in points]),
+        'benchmark':{'symbol':'SPY', 'ytd_return':spy_ytd, 'excess_return':None if spy_ytd is None else ytd_return - spy_ytd},
+        'points':points, 'benchmark_points':benchmark_series,
+        'source':'LongPort profit-analysis-summary', 'benchmark_source':benchmark['source'],
+        'methodology':'账户收益率直接采用长桥区间总收益率；年化节奏由YTD复合年化，仅用于目标进度，不等同于TWR或收益承诺。',
+        'fetched_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+    }
+    cache.update({'saved_at':time.time(), 'data':result})
+    return result
 
 def aggregate_positions(stock_data):
     combined = {}
@@ -832,7 +910,7 @@ def health():
         credential('LONGBRIDGE_APP_SECRET', 'LONGPORT_APP_SECRET'),
         credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN'),
     ))
-    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/prices', '/history', '/recommendations', '/analysis']})
+    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/performance', '/prices', '/history', '/recommendations', '/analysis']})
 
 @app.route('/session', methods=['POST', 'OPTIONS'])
 def create_session():
@@ -909,6 +987,16 @@ def prices():
         return jsonify({'prices':snapshot['prices'], 'updated':snapshot['fetched_at'], 'source':snapshot['source']})
     except Exception as e:
         return jsonify({'error':'实时账户行情获取失败', 'detail':str(e)}), 503
+
+@app.route('/performance')
+def performance():
+    if not request_authorized():
+        return auth_error()
+    try:
+        return jsonify(get_performance_snapshot(force=request.args.get('force') == '1'))
+    except Exception as exc:
+        app.logger.error('performance_snapshot_failed: %s', exc)
+        return jsonify({'error':'长桥真实账户绩效获取失败', 'detail':str(exc)}), 503
 
 @app.route('/history')
 def history():

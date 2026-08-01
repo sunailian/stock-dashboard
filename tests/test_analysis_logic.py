@@ -1,5 +1,6 @@
 import ast
 import base64
+import calendar
 import hashlib
 import hmac
 import math
@@ -7,6 +8,7 @@ import os
 import statistics
 import time
 import unittest
+from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +24,7 @@ def load_logic():
         'longbridge_signature', 'rates_to_cny', 'aggregate_positions',
         'build_account_snapshot', 'issue_session_token', 'valid_session_token',
         'technical_snapshot',
+        'utc_timestamp', 'month_end_dates', 'max_drawdown_from_returns',
     }
     module = ast.Module(
         body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names],
@@ -38,6 +41,10 @@ def load_logic():
         'base64': base64,
         'os': os,
         'time': time,
+        'calendar': calendar,
+        'date': date,
+        'datetime': datetime,
+        'timezone': timezone,
         'SECTOR_BY_SYMBOL': {'AAPL':'科技', '0700.HK':'通信服务'},
     }
     exec(compile(module, 'app.py', 'exec'), namespace)
@@ -144,6 +151,13 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertGreater(result['momentum_60d'],0)
         self.assertGreater(result['sma50'],result['sma200'])
         self.assertGreater(result['atr_14d'],0)
+
+    def test_performance_month_ends_and_drawdown_are_not_fabricated(self):
+        ends=self.logic['month_end_dates'](date(2026,1,1),date(2026,3,12))
+        self.assertEqual(ends,[date(2026,1,31),date(2026,2,28),date(2026,3,12)])
+        drawdown=self.logic['max_drawdown_from_returns']([.10,.05,.20,-.10])
+        self.assertAlmostEqual(drawdown,-.25)
+        self.assertEqual(self.logic['utc_timestamp'](date(1970,1,1)),0)
 
     def test_discovery_score_rewards_missing_sector(self):
         closes = [100 + index * .35 + math.sin(index / 5) for index in range(252)]
