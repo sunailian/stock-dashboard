@@ -25,6 +25,7 @@ def load_logic():
         'build_account_snapshot', 'issue_session_token', 'valid_session_token',
         'technical_snapshot',
         'utc_timestamp', 'month_end_dates', 'max_drawdown_from_returns',
+        'classify_cash_flow', 'xirr',
     }
     module = ast.Module(
         body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names],
@@ -158,6 +159,19 @@ class DecisionAuditTests(unittest.TestCase):
         drawdown=self.logic['max_drawdown_from_returns']([.10,.05,.20,-.10])
         self.assertAlmostEqual(drawdown,-.25)
         self.assertEqual(self.logic['utc_timestamp'](date(1970,1,1)),0)
+
+    def test_external_cash_flow_classification_excludes_trading_activity(self):
+        classify=self.logic['classify_cash_flow']
+        self.assertEqual(classify('银行入金'),'deposit')
+        self.assertEqual(classify('提款出金'),'withdrawal')
+        self.assertEqual(classify('现金分红'),'income')
+        self.assertEqual(classify('货币兑换入账'),'internal')
+        self.assertEqual(classify('新股申购额退回'),'internal')
+
+    def test_xirr_uses_dated_external_cashflows(self):
+        result=self.logic['xirr']([(date(2025,1,1),-1000),(date(2026,1,1),1100)])
+        self.assertAlmostEqual(result,.10,places=5)
+        self.assertIsNone(self.logic['xirr']([(date(2025,1,1),1000)]))
 
     def test_discovery_score_rewards_missing_sector(self):
         closes = [100 + index * .35 + math.sin(index / 5) for index in range(252)]

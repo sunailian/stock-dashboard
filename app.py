@@ -359,6 +359,66 @@ def max_drawdown_from_returns(values):
         drawdown = min(drawdown, wealth / peak - 1 if peak else 0)
     return drawdown
 
+def classify_cash_flow(name):
+    value = str(name or '').lower()
+    if any(word in value for word in ('入金', '存入', '转入资金', 'deposit')):
+        return 'deposit'
+    if any(word in value for word in ('出金', '提款', '提取', '转出资金', 'withdraw')):
+        return 'withdrawal'
+    if any(word in value for word in ('分红', '股息', '利息收入', '资金入账', 'dividend')):
+        return 'income'
+    if any(word in value for word in ('费用', '收费', '融资利息', '手续费', 'fee')):
+        return 'cost'
+    if any(word in value for word in ('兑换', '新股', '认购', '申购')):
+        return 'internal'
+    return 'other'
+
+def xirr(cashflows):
+    clean = sorted((day, as_float(amount)) for day, amount in cashflows if as_float(amount) != 0)
+    if len(clean) < 2 or not any(amount < 0 for _, amount in clean) or not any(amount > 0 for _, amount in clean):
+        return None
+    start = clean[0][0]
+    def npv(rate):
+        return sum(amount / ((1 + rate) ** ((day - start).days / 365)) for day, amount in clean)
+    low, high = -.9999, 10.0
+    low_value, high_value = npv(low), npv(high)
+    while low_value * high_value > 0 and high < 10000:
+        high *= 10
+        high_value = npv(high)
+    if low_value * high_value > 0:
+        return None
+    for _ in range(120):
+        middle = (low + high) / 2
+        value = npv(middle)
+        if abs(value) < .000001:
+            return middle
+        if low_value * value <= 0:
+            high, high_value = middle, value
+        else:
+            low, low_value = middle, value
+    return (low + high) / 2
+
+def cash_flow_summary(start_day, end_day, fx_to_cny, target_currency):
+    data = longbridge_request('/v1/asset/cashflow', {
+        'start_time':str(utc_timestamp(start_day)), 'end_time':str(utc_timestamp(end_day, True)),
+        'business_type':'1', 'page':'1', 'size':'10000',
+    })
+    totals, external = {}, []
+    target_rate = fx_to_cny.get(target_currency)
+    for item in data.get('list', []):
+        category = classify_cash_flow(item.get('transaction_flow_name'))
+        currency = str(item.get('currency') or '').upper()
+        amount = abs(as_float(item.get('balance')))
+        key = f'{category}_by_currency'
+        totals.setdefault(key, {})[currency] = totals.setdefault(key, {}).get(currency, 0) + amount
+        if category in {'deposit', 'withdrawal'}:
+            source_rate = fx_to_cny.get(currency)
+            if source_rate and target_rate:
+                converted = amount * source_rate / target_rate
+                flow_day = datetime.fromtimestamp(int(item.get('business_time')), timezone.utc).date()
+                external.append((flow_day, -converted if category == 'deposit' else converted))
+    return {'count':len(data.get('list', [])), 'totals':totals, 'external_flows':external}
+
 def get_performance_snapshot(force=False, today=None):
     cache = PERFORMANCE_CACHE
     if not force and cache['data'] and time.time() - cache['saved_at'] < 30 * 60:
@@ -366,21 +426,23 @@ def get_performance_snapshot(force=False, today=None):
     end_day = today or date.today()
     start_day = date(end_day.year, 1, 1)
     period_ends = month_end_dates(start_day, end_day)
-    start_ts = str(utc_timestamp(start_day))
-    def fetch_period(period_end):
-        summary = longbridge_request('/v1/portfolio/profit-analysis-summary', {'start':start_ts, 'end':str(utc_timestamp(period_end, True))})
-        return period_end, summary
-    latest_period = period_ends[-1]
-    summaries = [fetch_period(latest_period)]
-    for period_end in period_ends[:-1]:
+    def fetch_period(period_start, period_end):
+        summary = longbridge_request('/v1/portfolio/profit-analysis-summary', {'start':str(utc_timestamp(period_start)), 'end':str(utc_timestamp(period_end, True))})
+        return period_start, period_end, summary
+    latest = longbridge_request('/v1/portfolio/profit-analysis-summary', {'start':str(utc_timestamp(start_day)), 'end':str(utc_timestamp(end_day, True))})
+    monthly = []
+    for index, period_end in enumerate(period_ends):
         time.sleep(.35)
+        period_start = date(period_end.year, period_end.month, 1)
         try:
-            summaries.append(fetch_period(period_end))
+            monthly.append(fetch_period(period_start, period_end))
         except Exception:
             continue
-    summaries.sort(key=lambda item:item[0])
-    points = [{'date':period_end.isoformat(), 'return':as_float(summary.get('sum_profit_rate'))} for period_end, summary in summaries]
-    latest = summaries[-1][1]
+    monthly.sort(key=lambda item:item[1])
+    linked, points = 1.0, []
+    for _, period_end, summary in monthly:
+        linked *= 1 + as_float(summary.get('sum_profit_rate'))
+        points.append({'date':period_end.isoformat(), 'return':linked - 1, 'period_return':as_float(summary.get('sum_profit_rate'))})
     ytd_return = as_float(latest.get('sum_profit_rate'))
     elapsed_days = max(1, (end_day - start_day).days + 1)
     annualized = (1 + ytd_return) ** (365 / elapsed_days) - 1 if ytd_return > -1 and elapsed_days >= 30 else None
@@ -393,18 +455,31 @@ def get_performance_snapshot(force=False, today=None):
         close = eligible[-1]['close'] if eligible else first['close']
         benchmark_series.append({'date':point['date'], 'return':close / first['close'] - 1})
     spy_ytd = benchmark_series[-1]['return'] if benchmark_series else None
+    currency = str(latest.get('currency') or 'USD').upper()
+    flows = {'count':0, 'totals':{}, 'external_flows':[], 'available':False}
+    try:
+        exchange_data = longbridge_request('/v1/asset/exchange_rates')
+        flows.update(cash_flow_summary(start_day, end_day, rates_to_cny(exchange_data), currency))
+        flows['available'] = True
+    except Exception as exc:
+        app.logger.error('performance_cashflow_failed: %s', exc)
+    xirr_flows = [(start_day, -as_float(latest.get('initial_asset_value'))), *flows['external_flows'], (end_day, as_float(latest.get('ending_asset_value')))]
+    money_weighted = xirr(xirr_flows) if flows['available'] else None
+    linked_return = linked - 1 if points else None
     result = {
         'period':{'start':str(latest.get('start_date') or start_day), 'end':str(latest.get('end_date') or end_day), 'days':elapsed_days},
-        'currency':str(latest.get('currency') or 'USD'), 'current_total_asset':as_float(latest.get('current_total_asset')),
+        'currency':currency, 'current_total_asset':as_float(latest.get('current_total_asset')),
         'initial_asset_value':as_float(latest.get('initial_asset_value')), 'ending_asset_value':as_float(latest.get('ending_asset_value')),
         'invest_amount':as_float(latest.get('invest_amount')), 'total_profit':as_float(latest.get('sum_profit')),
         'ytd_return':ytd_return, 'annualized_pace':annualized, 'goal_return':.20,
+        'monthly_linked_return':linked_return, 'xirr':money_weighted,
         'goal_gap':None if annualized is None else .20 - annualized,
         'monthly_max_drawdown':max_drawdown_from_returns([item['return'] for item in points]),
         'benchmark':{'symbol':'SPY', 'ytd_return':spy_ytd, 'excess_return':None if spy_ytd is None else ytd_return - spy_ytd},
         'points':points, 'benchmark_points':benchmark_series,
+        'cash_flow_summary':{'available':flows['available'], 'count':flows['count'], 'totals':flows['totals'], 'external_flow_count':len(flows['external_flows'])},
         'source':'LongPort profit-analysis-summary', 'benchmark_source':benchmark['source'],
-        'methodology':'账户收益率直接采用长桥区间总收益率；年化节奏由YTD复合年化，仅用于目标进度，不等同于TWR或收益承诺。',
+        'methodology':'账户YTD直接采用长桥区间总收益率；月度链式收益按自然月连接，是月频TWR近似；XIRR只把明确入金/出金作为外部现金流，分红、换汇和证券交易不会当作入金。',
         'fetched_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
     }
     cache.update({'saved_at':time.time(), 'data':result})
