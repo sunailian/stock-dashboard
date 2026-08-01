@@ -181,6 +181,17 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertEqual(snapshot['account']['total_cash_cny'],700)
         self.assertEqual(snapshot['positions'][0]['market_value_cny'],1680)
 
+    def test_account_snapshot_keeps_positions_when_optional_source_fails(self):
+        stock_data = {'list':[{'account_channel':'cash','stock_info':[{'symbol':'AAPL.US','symbol_name':'Apple','quantity':'3','available_quantity':'3','currency':'USD','cost_price':'150','market':'US'}]}]}
+        snapshot = self.logic['build_account_snapshot'](
+            stock_data, {'list':[]}, {'exchanges':[]}, {},
+            source_errors={'prices':'temporary timeout'},
+        )
+        self.assertEqual(snapshot['positions'][0]['quantity'],3)
+        self.assertEqual(snapshot['positions'][0]['cost_price'],150)
+        self.assertFalse(snapshot['complete'])
+        self.assertIn('prices',snapshot['source_errors'])
+
 
 if __name__ == '__main__':
     unittest.main()

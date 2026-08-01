@@ -290,14 +290,14 @@ let allPos=[],gainers=[],priceTime='',latestMarketPrices={},discoveryCandidates=
 function calcAllPos(prices){
   const us=portfolio.usPositions.map(p=>{
     // 接口 key 是 GOOG.US，兼容裸 GOOG 和带 .US 两种
-    const px=prices[p.sym]||prices[p.sym+'.US']||0;
-    const fx=FX[p.ccy]||0,comparable=p.cost>0;
-    return {...p,price:px,fx,pnl:(px-p.cost)*p.qty,ret:comparable?(px-p.cost)/p.cost*100:0,returnComparable:comparable,pnlCny:(px-p.cost)*p.qty*fx,costCny:comparable?p.cost*p.qty*fx:0,marketValueCny:Math.abs(px*p.qty*fx)};
+    const px=Number(prices[p.sym]||prices[p.sym+'.US']),fx=Number(FX[p.ccy]);
+    const priceAvailable=Number.isFinite(px)&&px>0,fxAvailable=Number.isFinite(fx)&&fx>0,comparable=p.cost>0&&priceAvailable&&fxAvailable;
+    return {...p,price:priceAvailable?px:null,fx:fxAvailable?fx:null,priceAvailable,pnl:priceAvailable?(px-p.cost)*p.qty:null,ret:comparable?(px-p.cost)/p.cost*100:0,returnComparable:comparable,pnlCny:comparable?(px-p.cost)*p.qty*fx:0,costCny:comparable?p.cost*p.qty*fx:0,marketValueCny:priceAvailable&&fxAvailable?Math.abs(px*p.qty*fx):0};
   });
   const hk=portfolio.hkPositions.map(p=>{
-    const px=prices[p.sym]||0;
-    const fx=FX[p.ccy]||0,comparable=p.cost>0;
-    return {...p,price:px,fx,pnl:(px-p.cost)*p.qty,ret:comparable?(px-p.cost)/p.cost*100:0,returnComparable:comparable,pnlCny:(px-p.cost)*p.qty*fx,costCny:comparable?p.cost*p.qty*fx:0,marketValueCny:Math.abs(px*p.qty*fx)};
+    const px=Number(prices[p.sym]),fx=Number(FX[p.ccy]);
+    const priceAvailable=Number.isFinite(px)&&px>0,fxAvailable=Number.isFinite(fx)&&fx>0,comparable=p.cost>0&&priceAvailable&&fxAvailable;
+    return {...p,price:priceAvailable?px:null,fx:fxAvailable?fx:null,priceAvailable,pnl:priceAvailable?(px-p.cost)*p.qty:null,ret:comparable?(px-p.cost)/p.cost*100:0,returnComparable:comparable,pnlCny:comparable?(px-p.cost)*p.qty*fx:0,costCny:comparable?p.cost*p.qty*fx:0,marketValueCny:priceAvailable&&fxAvailable?Math.abs(px*p.qty*fx):0};
   });
   return {all:[...us,...hk],us,hk};
 }
@@ -344,31 +344,32 @@ function renderHealthReport(positions){
 
 function refreshAllCharts(){
   const d=allPos;
-  renderHealthReport(d);
+  const priced=d.filter(p=>p.priceAvailable&&p.fx);
+  renderHealthReport(priced);
   // Hero
   document.getElementById('hero-pct').textContent=portfolio.totalReturn.toFixed(1)+'%';
-  const sectorValues={};d.forEach(p=>{sectorValues[p.sector]=(sectorValues[p.sector]||0)+p.marketValueCny});
+  const sectorValues={};priced.forEach(p=>{sectorValues[p.sector]=(sectorValues[p.sector]||0)+p.marketValueCny});
   chartSector.setOption({series:[{data:Object.entries(sectorValues).map(([name,value])=>({name,value}))}]});
-  chartAlloc.setOption({series:[{data:[...d.map(p=>({name:p.sym,value:p.marketValueCny})),{name:'现金',value:portfolio.cash}]}]});
+  chartAlloc.setOption({series:[{data:[...priced.map(p=>({name:p.sym,value:p.marketValueCny})),{name:'现金',value:portfolio.cash}]}]});
   // Rank
   chartRank.setOption({yAxis:{data:gainers.map(p=>p.sym).reverse()},series:[{data:gainers.map(p=>({value:p.ret,itemStyle:{color:p.ret>=20?'#00e676':p.ret>=0?'#ff6a00':'#ff3d3d'}})).reverse()}]});
   // Perf spectrum
   const bins={'>+50%':0,'+20~50%':0,'0~20%':0,'-10~0%':0,'-30~-10%':0,'<-30%':0};
-  for(const p of d){const r=p.ret;if(r>50)bins['>+50%']++;else if(r>=20)bins['+20~50%']++;else if(r>=0)bins['0~20%']++;else if(r>=-10)bins['-10~0%']++;else if(r>=-30)bins['-30~-10%']++;else bins['<-30%']++}
+  for(const p of priced.filter(p=>p.returnComparable)){const r=p.ret;if(r>50)bins['>+50%']++;else if(r>=20)bins['+20~50%']++;else if(r>=0)bins['0~20%']++;else if(r>=-10)bins['-10~0%']++;else if(r>=-30)bins['-30~-10%']++;else bins['<-30%']++}
   chartPerf.setOption({series:[{data:Object.values(bins).map(v=>({value:v,itemStyle:{color:v>2?'#00e676':v>0?'#ff6a00':'#ff3d3d'}}))}]});
   // US list
   const usList=document.getElementById('us-list');usList.innerHTML='';
   const usData=d.filter(x=>!x.sym.includes('.HK'));
   for(const p of usData){
     const r=p.ret.toFixed(1),c=p.returnComparable?(p.ret>=0?'up':'dn'):'';
-    usList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${p.returnComparable?(p.ret>=0?'+':'')+r+'%':'负成本'}</span></div>`;
+    usList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${!p.priceAvailable?'行情缺失':p.returnComparable?(p.ret>=0?'+':'')+r+'%':'负成本'}</span></div>`;
   }
   // HK list
   const hkList=document.getElementById('hk-list');hkList.innerHTML='';
   const hkData=d.filter(x=>x.sym.includes('.HK'));
   for(const p of hkData){
     const r=p.ret.toFixed(1),c=p.returnComparable?(p.ret>=0?'up':'dn'):'';
-    hkList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${p.returnComparable?(p.ret>=0?'+':'')+r+'%':'负成本'}</span></div>`;
+    hkList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${!p.priceAvailable?'行情缺失':p.returnComparable?(p.ret>=0?'+':'')+r+'%':'负成本'}</span></div>`;
   }
 }
 
@@ -380,7 +381,7 @@ const ANALYSIS_CACHE_KEY='zhuoyuan_analysis_cache_v4_live_account';
 const PRICE_HISTORY_KEY='zhuoyuan_price_history_v1';
 const DISCOVERY_CACHE_KEY='zhuoyuan_discovery_cache_v1';
 function nativeCurrency(ccy){return ccy==='USD'?'$':'HK$'}
-function formatNativePrice(value,ccy){return nativeCurrency(ccy)+Number(value).toFixed(2)}
+function formatNativePrice(value,ccy){return Number.isFinite(Number(value))&&Number(value)>0?nativeCurrency(ccy)+Number(value).toFixed(2):'--'}
 function escapeHTML(value){return String(value).replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
 function readStorage(key,fallback){try{return JSON.parse(localStorage.getItem(key))||fallback}catch{return fallback}}
 function getDecisionLog(){
@@ -593,6 +594,7 @@ function openDiscoveryDetail(p){
 function openStockDetail(symbol){
   const candidate=discoveryCandidates.find(x=>x.sym===symbol);if(candidate){openDiscoveryDetail(candidate);return}
   const p=allPos.find(x=>x.sym===symbol);if(!p)return;
+  if(!p.priceAvailable){showAccountFailure(`${p.sym} 当前行情缺失；数量和成本仍为券商实时数据，恢复行情前已禁止生成操作建议。`);return}
   activeDetailSymbol=symbol;
   document.getElementById('stock-detail-kicker').textContent='POSITION ANALYSIS · 个股持仓分析';
   document.getElementById('detail-cost-label').textContent='买入股价 · COST';
@@ -666,7 +668,7 @@ function initAll(prices,updated=''){
   updateDecisionOutcomes();
   priceTime=updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
   refreshAllCharts();
-  if(discoveryCandidates.length)renderRecommendationPool();else fetchRecommendations();
+  if(accountLive){if(discoveryCandidates.length)renderRecommendationPool();else fetchRecommendations()}
   refreshOpenDetailPrice();
   document.getElementById('live-label').textContent='LIVE '+priceTime;
   // Update hero numbers
@@ -676,19 +678,26 @@ function initAll(prices,updated=''){
 }
 
 function applyAccountSnapshot(data){
-  if(!data.complete)throw new Error(`账户快照不完整：缺少行情 ${(data.missing_prices||[]).join(',')}；缺少汇率 ${(data.missing_currencies||[]).join(',')}`);
   FX={CNY:1,...data.fx_to_cny};
   const account=data.account||{},cash=account.cash_by_currency||{};
   portfolio.netAssets=Number(account.net_assets_cny)||0;portfolio.cash=Number(account.total_cash_cny)||0;portfolio.buyPower=Number(account.buy_power_cny)||0;
   portfolio.cashUSD=Number(cash.USD)||0;portfolio.cashHKD=Number(cash.HKD)||0;
   const positions=(data.positions||[]).map(item=>({sym:item.symbol,name:item.name,qty:Number(item.quantity),availableQty:Number(item.available_quantity),cost:Number(item.cost_price),ccy:item.currency,sector:item.sector,accountChannels:item.account_channels||[]}));
   portfolio.usPositions=positions.filter(p=>!p.sym.endsWith('.HK'));portfolio.hkPositions=positions.filter(p=>p.sym.endsWith('.HK'));
-  accountLive=true;accountFetchedAt=data.fetched_at;priceTime=data.fetched_at;
+  accountLive=Boolean(data.complete);accountFetchedAt=data.fetched_at;priceTime=data.fetched_at;
   document.getElementById('sk-cash').textContent='¥ '+Math.round(portfolio.cash).toLocaleString();
   document.getElementById('sk-bp').textContent='¥ '+Math.round(portfolio.buyPower).toLocaleString();
   document.getElementById('sk-usd').textContent='$ '+portfolio.cashUSD.toLocaleString(undefined,{maximumFractionDigits:2});
   document.getElementById('sk-hkd').textContent='HK$ '+portfolio.cashHKD.toLocaleString(undefined,{maximumFractionDigits:2});
   updateMarkets(data.prices||{});initAll(data.prices||{},data.fetched_at);
+  if(!data.complete){
+    const missing=[...(data.missing_prices||[]),...(data.missing_currencies||[]),...Object.keys(data.source_errors||{})];
+    document.getElementById('live-label').textContent='PARTIAL '+data.fetched_at;
+    document.getElementById('health-status').textContent='数据不完整，暂停评分';
+    document.getElementById('health-summary-text').textContent='持仓数量和成本已显示，但缺失行情或汇率会导致组合收益与健康度失真，因此暂不计算分数。';
+    document.getElementById('health-priority').textContent='等待缺失数据源恢复；期间不生成个股操作建议。';
+    document.getElementById('rec-strip').innerHTML=`<div class="rec-empty">持仓数量和成本已实时同步；${escapeHTML([...new Set(missing)].join('、')||'部分数据源')} 暂不可用，相关收益、健康度和个股分析已暂停。</div>`;
+  }
 }
 function showAccountFailure(message){
   accountLive=false;document.getElementById('live-label').textContent='ACCOUNT BLOCKED';

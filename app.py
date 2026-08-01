@@ -225,7 +225,7 @@ def aggregate_positions(stock_data):
         positions.append(item)
     return sorted(positions, key=lambda item: (item['market'], item['symbol']))
 
-def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetched_at=None):
+def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetched_at=None, source_errors=None):
     positions = aggregate_positions(stock_data)
     fx = rates_to_cny(exchange_data)
     for item in positions:
@@ -257,6 +257,7 @@ def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetc
             total_cash_cny += amount * fx[currency]
     missing_prices = [item['symbol'] for item in positions if item['price'] is None]
     missing_fx = [item['currency'] for item in positions if item['fx_to_cny'] is None]
+    errors = source_errors or {}
     return {
         'source':'longbridge_openapi', 'fetched_at':fetched_at or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'positions':positions, 'prices':prices, 'fx_to_cny':fx,
@@ -265,22 +266,39 @@ def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetc
             'buy_power_cny':round(buy_power_cny, 2), 'cash_by_currency':cash_by_currency,
             'balances':balances,
         },
-        'complete':not (missing_prices or missing_fx or missing_conversion),
+        'complete':not (missing_prices or missing_fx or missing_conversion or errors),
         'missing_prices':missing_prices, 'missing_currencies':sorted(set(missing_fx + missing_conversion)),
+        'source_errors':errors,
     }
 
 def get_account_snapshot(force=False):
     cache = ACCOUNT_CACHE
     if not force and cache['snapshot'] and time.time() - cache['saved_at'] < 15:
         return cache['snapshot']
+    source_errors = {}
     with ThreadPoolExecutor(max_workers=3) as pool:
-        stock_future = pool.submit(longbridge_request, '/v1/asset/stock')
-        balance_future = pool.submit(longbridge_request, '/v1/asset/account')
-        exchange_future = pool.submit(longbridge_request, '/v1/asset/exchange_rates')
-        stock_data, balance_data, exchange_data = stock_future.result(), balance_future.result(), exchange_future.result()
+        futures = {
+            'positions':pool.submit(longbridge_request, '/v1/asset/stock'),
+            'account':pool.submit(longbridge_request, '/v1/asset/account'),
+            'exchange_rates':pool.submit(longbridge_request, '/v1/asset/exchange_rates'),
+        }
+        results = {}
+        for name, future in futures.items():
+            try:
+                results[name] = future.result()
+            except Exception as exc:
+                source_errors[name] = str(exc)
+                results[name] = {}
+    stock_data, balance_data, exchange_data = results['positions'], results['account'], results['exchange_rates']
+    if 'positions' in source_errors:
+        raise RuntimeError('券商持仓接口不可用：' + source_errors['positions'])
     symbols = [item['symbol'] for item in aggregate_positions(stock_data)]
-    prices = fetch_sina_prices(symbols)
-    snapshot = build_account_snapshot(stock_data, balance_data, exchange_data, prices)
+    try:
+        prices = fetch_sina_prices(symbols)
+    except Exception as exc:
+        prices = {}
+        source_errors['prices'] = str(exc)
+    snapshot = build_account_snapshot(stock_data, balance_data, exchange_data, prices, source_errors=source_errors)
     cache.update({'saved_at':time.time(), 'snapshot':snapshot})
     return snapshot
 
