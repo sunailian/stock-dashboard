@@ -189,15 +189,25 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <div id="auth-error" style="font-size:11px;color:var(--red);display:none">密码错误</div>
 </div>
 <script>
-// 密码 SHA-256 哈希（分两段防截断）
-const AUTH_HASH='d73844191b83dd33b23b2e66222d5af1'+'a8527707a8fc6f8197a6b1aaf38e4e9a'
+const API_BASE='https://stock-dashboard-ydmplntsru.cn-hangzhou.fcapp.run';
+let sessionToken=sessionStorage.getItem('dashboard_session')||'';
+function apiHeaders(extra={}){return sessionToken?{...extra,Authorization:'Bearer '+sessionToken}:extra}
+function showLogin(message=''){
+  sessionToken='';sessionStorage.removeItem('dashboard_session');
+  document.getElementById('auth-overlay').style.display='flex';
+  const error=document.getElementById('auth-error');error.textContent=message||'请输入访问密码';error.style.display=message?'block':'none';
+}
 async function authSubmit(){
   const pw=document.getElementById('auth-input').value;
-  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pw)))).map(b=>b.toString(16).padStart(2,'0')).join('');
-  if(hash===AUTH_HASH){document.getElementById('auth-overlay').style.display='none';sessionStorage.setItem('auth','1')}
-  else{document.getElementById('auth-error').style.display='block'}
+  const error=document.getElementById('auth-error');error.style.display='none';
+  try{
+    const resp=await fetch(API_BASE+'/session',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({password:pw})});
+    const data=await resp.json();if(!resp.ok||!data.token)throw new Error(data.error||'验证失败');
+    sessionToken=data.token;sessionStorage.setItem('dashboard_session',sessionToken);document.getElementById('auth-input').value='';document.getElementById('auth-overlay').style.display='none';
+    if(typeof fetchAccount==='function')fetchAccount(true,true);
+  }catch(e){showLogin(e.message||'密码错误')}
 }
-if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').style.display='none';
+if(sessionToken)document.getElementById('auth-overlay').style.display='none';
 </script>
 <div id="glow-cursor"></div>
 <div id="loading"><div class="spinner"></div></div>
@@ -224,19 +234,19 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
   <!-- CENTER HERO -->
   <div id="hero">
     <div class="kpi-label">总净资产 · NET ASSETS (CNY)</div>
-    <div class="kpi" id="hero-kpi">¥ 797,912</div>
+    <div class="kpi" id="hero-kpi">账户同步中</div>
     <div class="progress-wrap"><div class="progress-bar" id="hero-bar"></div></div>
     <div class="progress-label">年化目标 20% ｜ 当前 <span id="hero-pct">+36.2%</span></div>
     <div class="sub-kpis">
-      <div class="sub-kpi"><div class="val" id="sk-cash">168,716</div><div class="lbl">总现金 CNY</div></div>
-      <div class="sub-kpi"><div class="val" id="sk-bp">534,103</div><div class="lbl">购买力 CNY</div></div>
-      <div class="sub-kpi"><div class="val" id="sk-usd">¥ 154,863</div><div class="lbl">美元现金</div></div>
-      <div class="sub-kpi"><div class="val" id="sk-hkd">¥ 13,888</div><div class="lbl">港币现金</div></div>
+      <div class="sub-kpi"><div class="val" id="sk-cash">--</div><div class="lbl">总现金 CNY</div></div>
+      <div class="sub-kpi"><div class="val" id="sk-bp">--</div><div class="lbl">购买力 CNY</div></div>
+      <div class="sub-kpi"><div class="val" id="sk-usd">--</div><div class="lbl">美元现金</div></div>
+      <div class="sub-kpi"><div class="val" id="sk-hkd">--</div><div class="lbl">港币现金</div></div>
     </div>
   </div>
 
   <!-- TREND -->
-  <div class="panel" id="trend-chart"><div class="panel-title">30日资产走势 · ASSET TREND</div><div class="chart-wrap" id="chart-trend"></div></div>
+  <div class="panel" id="trend-chart"><div class="panel-title">历史资产走势 · ACCOUNT HISTORY</div><div class="chart-wrap" id="chart-trend"></div></div>
 
   <!-- LEFT -->
   <div class="panel" id="sector-panel"><div class="panel-title">板块分布 · SECTOR</div><div class="chart-wrap" id="chart-sector"></div></div>
@@ -268,45 +278,26 @@ if(sessionStorage.getItem('auth')==='1')document.getElementById('auth-overlay').
 </div>
 
 <script>
-// ── Data (cost basis from LongPort 2026-07-31, prices from Sina) ──
-const FX={USD:6.7546,HKD:0.8609};  // 人民币汇率（新浪 2026-07-31）
+// ── Live account data: quantities/cost/balance from LongPort via FC ──
+let FX={CNY:1};
 const portfolio={
-  netAssets:926860, cash:195976, buyPower:620401, cashUSD:22928, cashHKD:16132,
-  totalReturn:36.2, annualTarget:20,
-  usPositions:[
-    {sym:'GOOG',name:'Alphabet',qty:56,cost:209.93,ccy:'USD',sector:'科技'},
-    {sym:'MSFT',name:'Microsoft',qty:20,cost:338.07,ccy:'USD',sector:'科技'},
-    {sym:'NVDA',name:'NVIDIA',qty:50,cost:187.74,ccy:'USD',sector:'半导体'},
-    {sym:'TSLA',name:'Tesla',qty:10,cost:579.38,ccy:'USD',sector:'汽车'},
-    {sym:'BABA',name:'Alibaba',qty:110,cost:-188.67,ccy:'USD',sector:'电商'},
-    {sym:'PAAS',name:'Pan American Silver',qty:120,cost:42.89,ccy:'USD',sector:'矿业'},
-    {sym:'TLT',name:'iShares 20+Yr Treasury',qty:50,cost:79.54,ccy:'USD',sector:'债券'},
-    {sym:'SMH',name:'VanEck Semiconductor',qty:10,cost:538.14,ccy:'USD',sector:'半导体'}
-  ],
-  hkPositions:[
-    {sym:'9988.HK',name:'阿里巴巴-W',qty:600,cost:117.62,ccy:'HKD',sector:'电商'},
-    {sym:'981.HK',name:'中芯国际',qty:500,cost:60.40,ccy:'HKD',sector:'半导体'},
-    {sym:'6030.HK',name:'中信证券',qty:1000,cost:28.78,ccy:'HKD',sector:'金融'},
-    {sym:'100.HK',name:'MINIMAX-W',qty:40,cost:756.00,ccy:'HKD',sector:'AI'},
-    {sym:'2824.HK',name:'易方达黄金ETF',qty:5000,cost:15.00,ccy:'HKD',sector:'黄金'}
-  ]
+  netAssets:0,cash:0,buyPower:0,cashUSD:0,cashHKD:0,totalReturn:0,annualTarget:20,
+  usPositions:[],hkPositions:[]
 };
 
-const API_BASE='https://stock-dashboard-ydmplntsru.cn-hangzhou.fcapp.run';
-let allPos=[],gainers=[],priceTime='',latestMarketPrices={},discoveryCandidates=[],discoveryFetchPromise=null;
-const defaultPrices={GOOG:345.44,MSFT:456.65,NVDA:194.96,TSLA:302.00,BABA:120.41,PAAS:42.14,TLT:82.09,SMH:536.97,'9988.HK':117.00,'981.HK':63.25,'6030.HK':27.32,'100.HK':230.60,'2824.HK':9.43};
+let allPos=[],gainers=[],priceTime='',latestMarketPrices={},discoveryCandidates=[],discoveryFetchPromise=null,accountLive=false,accountFetchedAt='';
 
 function calcAllPos(prices){
   const us=portfolio.usPositions.map(p=>{
     // 接口 key 是 GOOG.US，兼容裸 GOOG 和带 .US 两种
-    const px=prices[p.sym]||prices[p.sym+'.US']||defaultPrices[p.sym]||0;
-    const fx=FX[p.ccy]||FX.HKD;
-    return {...p,price:px,fx,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/Math.abs(p.cost)*100:0),pnlCny:(px-p.cost)*p.qty*fx,costCny:Math.abs(p.cost)*p.qty*fx};
+    const px=prices[p.sym]||prices[p.sym+'.US']||0;
+    const fx=FX[p.ccy]||0,comparable=p.cost>0;
+    return {...p,price:px,fx,pnl:(px-p.cost)*p.qty,ret:comparable?(px-p.cost)/p.cost*100:0,returnComparable:comparable,pnlCny:(px-p.cost)*p.qty*fx,costCny:comparable?p.cost*p.qty*fx:0,marketValueCny:Math.abs(px*p.qty*fx)};
   });
   const hk=portfolio.hkPositions.map(p=>{
-    const px=prices[p.sym]||prices[p.sym+'.US']||defaultPrices[p.sym]||0;
-    const fx=FX[p.ccy]||FX.HKD;
-    return {...p,price:px,fx,pnl:(px-p.cost)*p.qty,ret:(p.cost!==0?(px-p.cost)/p.cost*100:0),pnlCny:(px-p.cost)*p.qty*fx,costCny:Math.abs(p.cost)*p.qty*fx};
+    const px=prices[p.sym]||0;
+    const fx=FX[p.ccy]||0,comparable=p.cost>0;
+    return {...p,price:px,fx,pnl:(px-p.cost)*p.qty,ret:comparable?(px-p.cost)/p.cost*100:0,returnComparable:comparable,pnlCny:(px-p.cost)*p.qty*fx,costCny:comparable?p.cost*p.qty*fx:0,marketValueCny:Math.abs(px*p.qty*fx)};
   });
   return {all:[...us,...hk],us,hk};
 }
@@ -314,14 +305,14 @@ function calcAllPos(prices){
 function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
 function renderHealthReport(positions){
   if(!positions.length)return;
-  const invested=positions.reduce((sum,p)=>sum+p.costCny,0);
-  const positive=positions.filter(p=>p.ret>=0).length;
-  const positiveRate=positive/positions.length;
-  const losingWeight=positions.filter(p=>p.ret<0).reduce((sum,p)=>sum+p.costCny,0)/(invested||1);
-  const sectors={};positions.forEach(p=>{const weight=p.costCny;sectors[p.sector]=(sectors[p.sector]||0)+weight});
+  const comparable=positions.filter(p=>p.returnComparable),invested=positions.reduce((sum,p)=>sum+p.marketValueCny,0);
+  const positive=comparable.filter(p=>p.ret>=0).length;
+  const positiveRate=positive/(comparable.length||1);
+  const losingWeight=positions.filter(p=>p.returnComparable&&p.ret<0).reduce((sum,p)=>sum+p.marketValueCny,0)/(invested||1);
+  const sectors={};positions.forEach(p=>{sectors[p.sector]=(sectors[p.sector]||0)+p.marketValueCny});
   const sectorCount=Object.keys(sectors).length;
-  const largest=[...positions].sort((a,b)=>b.costCny-a.costCny)[0];
-  const largestWeight=largest.costCny/(invested||1);
+  const largest=[...positions].sort((a,b)=>b.marketValueCny-a.marketValueCny)[0];
+  const largestWeight=largest.marketValueCny/(invested||1);
   const leverage=positions.filter(p=>p.sector==='杠杆ETF').length;
   const totalReturn=portfolio.totalReturn;
   const performanceScore=clamp(Math.round(10+totalReturn/portfolio.annualTarget*10+positiveRate*5),0,25);
@@ -330,7 +321,7 @@ function renderHealthReport(positions){
   const liquidityScore=clamp(Math.round(5+Math.min(1,portfolio.buyPower/(portfolio.netAssets||1))*10),0,15);
   const goalScore=clamp(Math.round(Math.min(20,10+totalReturn/portfolio.annualTarget*8)),0,20);
   const dimensions=[
-    {name:'收益质量',score:performanceScore,max:25,desc:`${positive}/${positions.length} 个仓位为正收益`},
+    {name:'收益质量',score:performanceScore,max:25,desc:`${positive}/${comparable.length} 个可比成本仓位为正收益`},
     {name:'分散度',score:diversificationScore,max:20,desc:`覆盖 ${sectorCount} 个板块，最大仓位 ${(largestWeight*100).toFixed(0)}%`},
     {name:'风险控制',score:riskScore,max:20,desc:`亏损仓位权重 ${(losingWeight*100).toFixed(0)}%${leverage?'，含杠杆 ETF':''}`},
     {name:'流动性',score:liquidityScore,max:15,desc:`购买力约占净资产 ${(portfolio.buyPower/portfolio.netAssets*100).toFixed(0)}%`},
@@ -348,14 +339,17 @@ function renderHealthReport(positions){
   document.getElementById('health-priority').textContent=`优先处理「${weak.name}」维度：${weak.desc}。建议先复核 ${worst.sym}（当前 ${worst.ret.toFixed(1)}%）的止损/减仓规则，再调整新增仓位。`;
   document.getElementById('health-dims').innerHTML=dimensions.map(d=>`<div class="health-dim"><div class="health-dim-top"><b>${d.name}</b><span>${d.score}/${d.max}</span></div><small>${d.desc}</small><div class="health-bar"><i style="--fill:${d.score/d.max*100}%"></i></div></div>`).join('');
   const largestLabel=largest.sym+(largestWeight>.2?'集中度偏高':'占比可控');
-  document.getElementById('health-notes').innerHTML=`<div class="health-note-card"><strong>优势 · STRENGTH</strong><p>收益 ${totalReturn.toFixed(1)}% 已超过年化目标 ${portfolio.annualTarget}%，且 ${positive}/${positions.length} 个仓位保持正收益。</p></div><div class="health-note-card"><strong>关注 · WATCH</strong><p>${largestLabel}；${leverage?'杠杆 ETF 会放大波动，需单独设定仓位上限。':'目前未发现杠杆 ETF 集中风险。'}</p></div><div class="health-note-card"><strong>执行 · ACTION</strong><p>保留购买力作为缓冲，新增资金优先补足低相关资产，避免继续加码当前最弱仓位。</p></div>`;
+  document.getElementById('health-notes').innerHTML=`<div class="health-note-card"><strong>数据 · LIVE</strong><p>数量、成本、现金和购买力来自 LongPort 实时账户快照；负成本仓位不计入收益率分母。</p></div><div class="health-note-card"><strong>关注 · WATCH</strong><p>${largestLabel}；${leverage?'杠杆 ETF 会放大波动，需单独设定仓位上限。':'目前未发现杠杆 ETF 集中风险。'}</p></div><div class="health-note-card"><strong>执行 · ACTION</strong><p>保留购买力作为缓冲，新增资金优先补足低相关资产，避免继续加码当前最弱仓位。</p></div>`;
 }
 
 function refreshAllCharts(){
   const d=allPos;
   renderHealthReport(d);
   // Hero
-  document.getElementById('hero-pct').textContent=((allPos.reduce((s,p)=>s+p.pnlCny,0)/(allPos.reduce((s,p)=>s+p.costCny,0)||1))*100).toFixed(1)+'%';
+  document.getElementById('hero-pct').textContent=portfolio.totalReturn.toFixed(1)+'%';
+  const sectorValues={};d.forEach(p=>{sectorValues[p.sector]=(sectorValues[p.sector]||0)+p.marketValueCny});
+  chartSector.setOption({series:[{data:Object.entries(sectorValues).map(([name,value])=>({name,value}))}]});
+  chartAlloc.setOption({series:[{data:[...d.map(p=>({name:p.sym,value:p.marketValueCny})),{name:'现金',value:portfolio.cash}]}]});
   // Rank
   chartRank.setOption({yAxis:{data:gainers.map(p=>p.sym).reverse()},series:[{data:gainers.map(p=>({value:p.ret,itemStyle:{color:p.ret>=20?'#00e676':p.ret>=0?'#ff6a00':'#ff3d3d'}})).reverse()}]});
   // Perf spectrum
@@ -366,15 +360,15 @@ function refreshAllCharts(){
   const usList=document.getElementById('us-list');usList.innerHTML='';
   const usData=d.filter(x=>!x.sym.includes('.HK'));
   for(const p of usData){
-    const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
-    usList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+    const r=p.ret.toFixed(1),c=p.returnComparable?(p.ret>=0?'up':'dn'):'';
+    usList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${p.returnComparable?(p.ret>=0?'+':'')+r+'%':'负成本'}</span></div>`;
   }
   // HK list
   const hkList=document.getElementById('hk-list');hkList.innerHTML='';
   const hkData=d.filter(x=>x.sym.includes('.HK'));
   for(const p of hkData){
-    const r=p.ret.toFixed(1),c=r>=0?'up':'dn';
-    hkList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${r>=0?'+':''}${r}%</span></div>`;
+    const r=p.ret.toFixed(1),c=p.returnComparable?(p.ret>=0?'up':'dn'):'';
+    hkList.innerHTML+=`<div class="srow" role="button" tabindex="0" data-symbol="${p.sym}" aria-label="查看 ${p.sym} 持仓分析"><span class="sym">${p.sym}</span><span class="name">${p.name}</span><span class="qty">${p.qty}</span><span class="cost">${formatNativePrice(p.cost,p.ccy)}</span><span class="price">${formatNativePrice(p.price,p.ccy)}</span><span class="pnl ${c}">${p.returnComparable?(p.ret>=0?'+':'')+r+'%':'负成本'}</span></div>`;
   }
 }
 
@@ -382,7 +376,7 @@ let detailChart=null;
 let activeDetailSymbol='';
 const DECISION_LOG_KEY='zhuoyuan_decision_log_v2';
 const LEGACY_DECISION_LOG_KEY='zhuoyuan_decision_log_v1';
-const ANALYSIS_CACHE_KEY='zhuoyuan_analysis_cache_v3';
+const ANALYSIS_CACHE_KEY='zhuoyuan_analysis_cache_v4_live_account';
 const PRICE_HISTORY_KEY='zhuoyuan_price_history_v1';
 const DISCOVERY_CACHE_KEY='zhuoyuan_discovery_cache_v1';
 function nativeCurrency(ccy){return ccy==='USD'?'$':'HK$'}
@@ -447,11 +441,11 @@ function buildPortfolioContext(p){
   const sectorValue=values.filter(x=>x.sector===p.sector).reduce((sum,x)=>sum+x.marketValueCny,0);
   const group=companyGroup(p.sym);
   const companyValue=values.filter(x=>companyGroup(x.sym)===group).reduce((sum,x)=>sum+x.marketValueCny,0);
-  return {position_weight:current?current.marketValueCny/invested:0,sector_weight:sectorValue/invested,company_weight:companyValue/invested,company_group:group,cash_ratio:(portfolio.cash*FX.HKD)/(portfolio.netAssets*FX.HKD||1),annual_target:portfolio.annualTarget};
+  return {position_weight:current?current.marketValueCny/invested:0,sector_weight:sectorValue/invested,company_weight:companyValue/invested,company_group:group,cash_ratio:portfolio.cash/(portfolio.netAssets||1),annual_target:portfolio.annualTarget,account_fetched_at:accountFetchedAt,account_source:'longbridge_openapi'};
 }
 function analysisContextSignature(p){
   const context=buildPortfolioContext(p);
-  return ['position_weight','sector_weight','company_weight','cash_ratio'].map(key=>Math.round((context[key]||0)*100)).join(':');
+  return [p.qty,Number(p.cost).toFixed(4),...['position_weight','sector_weight','company_weight','cash_ratio'].map(key=>Math.round((context[key]||0)*100))].join(':');
 }
 function getCachedAnalysis(p){
   const cache=readStorage(ANALYSIS_CACHE_KEY,{}),item=cache[p.sym];if(!item)return null;
@@ -499,7 +493,8 @@ async function fetchRecommendations(force=false){
   }
   renderRecommendationPool();
   discoveryFetchPromise=(async()=>{try{
-    const resp=await fetch(API_BASE+'/recommendations',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify(discoveryContext())});
+    const resp=await fetch(API_BASE+'/recommendations',{method:'POST',headers:apiHeaders({'Content-Type':'application/json'}),cache:'no-store',body:JSON.stringify(discoveryContext())});
+    if(resp.status===401){showLogin('登录已失效，请重新验证');throw new Error('登录已失效')}
     const data=await resp.json();if(!resp.ok||!data.recommendations?.length)throw new Error(data.error||'recommendations '+resp.status);
     localStorage.setItem(DISCOVERY_CACHE_KEY,JSON.stringify({savedAt:Date.now(),signature,items:data.recommendations}));
     discoveryCandidates=data.recommendations.map(item=>({...item,sym:item.symbol,qty:0,cost:0,ret:item.momentum_60d*100,pnl:0,fx:FX[item.ccy],isDiscovery:true}));renderRecommendationPool();
@@ -556,15 +551,17 @@ function applyStructuredAnalysis(p,data,cached=false){
 async function fetchStructuredAnalysis(p,force=false){
   const button=document.getElementById('analysis-refresh');
   if(button.disabled)return;
+  if(!accountLive||Date.now()-new Date(accountFetchedAt).getTime()>90*1000){document.getElementById('analysis-meta').textContent='实时账户快照已失效，正在重新同步；同步成功前禁止生成建议';await fetchAccount(false,true);if(!accountLive)return;p=allPos.find(item=>item.sym===p.sym);if(!p){document.getElementById('analysis-meta').textContent='该标的已不在实时持仓中，分析已终止';return}}
   if(!force){const cached=getCachedAnalysis(p);if(cached){applyStructuredAnalysis(p,cached,true);return}}
   button.disabled=true;button.textContent='分析中...';document.getElementById('analysis-meta').textContent='正在生成多空证据并执行集中度风控';
   try{
     const previous=getPreviousDecision(p.sym);
     const payload={symbol:p.sym,name:p.name,ccy:p.ccy,cost:p.cost,price:p.price,price_updated_at:priceTime,qty:p.qty,return_pct:p.ret,sector:p.sector,portfolio_context:buildPortfolioContext(p),previous_decision:previous?{rating:previous.rating,price:previous.price,generated_at:previous.generated_at,portfolio_context:previous.portfolio_context||null}:null,validation_context:getValidationContext(p.sym)};
-    const resp=await fetch(API_BASE+'/analysis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    if(!resp.ok)throw new Error('analysis '+resp.status);
-    const data=await resp.json();saveAnalysis(p,data);if(activeDetailSymbol===p.sym)applyStructuredAnalysis(p,data,false);
-  }catch(e){document.getElementById('analysis-meta').textContent='深度分析更新失败，保留当前结果；请稍后重试';console.log('Structured analysis:',e)}
+    const resp=await fetch(API_BASE+'/analysis',{method:'POST',headers:apiHeaders({'Content-Type':'application/json'}),cache:'no-store',body:JSON.stringify(payload)});
+    if(resp.status===401){showLogin('登录已失效，请重新验证');throw new Error('登录已失效')}
+    const data=await resp.json();if(!resp.ok)throw new Error(data.error||('analysis '+resp.status));
+    saveAnalysis(p,data);if(activeDetailSymbol===p.sym)applyStructuredAnalysis(p,data,false);
+  }catch(e){document.getElementById('analysis-meta').textContent='分析已阻断：'+e.message;console.log('Structured analysis:',e)}
   finally{button.disabled=false;button.textContent='刷新深度分析'}
 }
 function openDiscoveryDetail(p){
@@ -614,8 +611,8 @@ function openStockDetail(symbol){
   document.getElementById('detail-price').textContent=formatNativePrice(p.price,p.ccy);
   document.getElementById('detail-pnl').textContent=pnlLabel;
   document.getElementById('detail-pnl').className=' '+(pnl>=0?'up':'dn');
-  document.getElementById('detail-ret').textContent=(ret>=0?'+':'')+ret.toFixed(1)+'%';
-  document.getElementById('detail-ret').className=' '+(ret>=0?'up':'dn');
+  document.getElementById('detail-ret').textContent=p.returnComparable?(ret>=0?'+':'')+ret.toFixed(1)+'%':'负成本不可比';
+  document.getElementById('detail-ret').className=' '+(p.returnComparable?(ret>=0?'up':'dn'):'');
   const actionEl=document.getElementById('detail-action');actionEl.textContent='分析中';actionEl.className='stock-action hold';
   document.getElementById('detail-analysis').textContent='正在根据最新价格、成本、仓位和组合风险生成统一建议。';
   document.getElementById('detail-buy-zone').textContent='--';
@@ -656,13 +653,15 @@ function refreshOpenDetailPrice(){
   const pnlLabel=(p.pnl>=0?'+':'-')+nativeCurrency(p.ccy)+Math.abs(p.pnl).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   document.getElementById('detail-price').textContent=formatNativePrice(p.price,p.ccy);
   document.getElementById('detail-pnl').textContent=pnlLabel;document.getElementById('detail-pnl').className=' '+(p.pnl>=0?'up':'dn');
-  document.getElementById('detail-ret').textContent=(p.ret>=0?'+':'')+p.ret.toFixed(1)+'%';document.getElementById('detail-ret').className=' '+(p.ret>=0?'up':'dn');
+  document.getElementById('detail-ret').textContent=p.returnComparable?(p.ret>=0?'+':'')+p.ret.toFixed(1)+'%':'负成本不可比';document.getElementById('detail-ret').className=' '+(p.returnComparable?(p.ret>=0?'up':'dn'):'');
   if(!getCachedAnalysis(p))fetchStructuredAnalysis(p);
 }
 function initAll(prices,updated=''){
   latestMarketPrices=prices||{};
   const result=calcAllPos(prices);
-  allPos=result.all;gainers=[...allPos].sort((a,b)=>b.ret-a.ret).slice(0,5);
+  allPos=result.all;gainers=allPos.filter(p=>p.returnComparable).sort((a,b)=>b.ret-a.ret).slice(0,5);
+  const comparable=allPos.filter(p=>p.returnComparable),comparablePnl=comparable.reduce((sum,p)=>sum+p.pnlCny,0),comparableCost=comparable.reduce((sum,p)=>sum+p.costCny,0)||1;
+  portfolio.totalReturn=comparablePnl/comparableCost*100;
   recordPriceSnapshot();
   updateDecisionOutcomes();
   priceTime=updated||new Date().toLocaleTimeString('zh-CN',{hour12:false});
@@ -671,31 +670,46 @@ function initAll(prices,updated=''){
   refreshOpenDetailPrice();
   document.getElementById('live-label').textContent='LIVE '+priceTime;
   // Update hero numbers
-  const totalPnl=allPos.reduce((s,p)=>s+p.pnlCny,0);
-  const totalCost=allPos.reduce((s,p)=>s+p.costCny,0)||1;
-  document.getElementById('hero-pct').textContent=(totalPnl/totalCost*100).toFixed(1)+'%';
-  document.getElementById('hero-kpi').textContent='¥ '+Math.round(portfolio.netAssets*FX.HKD).toLocaleString();
-  document.getElementById('hero-bar').style.width=Math.min(Math.abs(totalPnl/totalCost*100),100)+'%';
+  document.getElementById('hero-pct').textContent=portfolio.totalReturn.toFixed(1)+'%';
+  document.getElementById('hero-kpi').textContent='¥ '+Math.round(portfolio.netAssets).toLocaleString();
+  document.getElementById('hero-bar').style.width=Math.min(Math.abs(portfolio.totalReturn),100)+'%';
 }
 
-async function fetchPrices(initial=false){
+function applyAccountSnapshot(data){
+  if(!data.complete)throw new Error(`账户快照不完整：缺少行情 ${(data.missing_prices||[]).join(',')}；缺少汇率 ${(data.missing_currencies||[]).join(',')}`);
+  FX={CNY:1,...data.fx_to_cny};
+  const account=data.account||{},cash=account.cash_by_currency||{};
+  portfolio.netAssets=Number(account.net_assets_cny)||0;portfolio.cash=Number(account.total_cash_cny)||0;portfolio.buyPower=Number(account.buy_power_cny)||0;
+  portfolio.cashUSD=Number(cash.USD)||0;portfolio.cashHKD=Number(cash.HKD)||0;
+  const positions=(data.positions||[]).map(item=>({sym:item.symbol,name:item.name,qty:Number(item.quantity),availableQty:Number(item.available_quantity),cost:Number(item.cost_price),ccy:item.currency,sector:item.sector,accountChannels:item.account_channels||[]}));
+  portfolio.usPositions=positions.filter(p=>!p.sym.endsWith('.HK'));portfolio.hkPositions=positions.filter(p=>p.sym.endsWith('.HK'));
+  accountLive=true;accountFetchedAt=data.fetched_at;priceTime=data.fetched_at;
+  document.getElementById('sk-cash').textContent='¥ '+Math.round(portfolio.cash).toLocaleString();
+  document.getElementById('sk-bp').textContent='¥ '+Math.round(portfolio.buyPower).toLocaleString();
+  document.getElementById('sk-usd').textContent='$ '+portfolio.cashUSD.toLocaleString(undefined,{maximumFractionDigits:2});
+  document.getElementById('sk-hkd').textContent='HK$ '+portfolio.cashHKD.toLocaleString(undefined,{maximumFractionDigits:2});
+  updateMarkets(data.prices||{});initAll(data.prices||{},data.fetched_at);
+}
+function showAccountFailure(message){
+  accountLive=false;document.getElementById('live-label').textContent='ACCOUNT BLOCKED';
+  if(!allPos.length){document.getElementById('hero-kpi').textContent='账户数据不可用';document.getElementById('us-list').innerHTML=`<div class="rec-empty">${escapeHTML(message)}</div>`;document.getElementById('hk-list').innerHTML=`<div class="rec-empty">${escapeHTML(message)}</div>`}
+  document.getElementById('rec-strip').innerHTML='<div class="rec-empty">实时账户不可用，已暂停个股推荐与分析。</div>';
+}
+async function fetchAccount(initial=false,force=false){
   if(initial) document.getElementById('live-label').textContent='SYNC...';
   try{
-    const resp=await fetch(API_BASE+'/prices?t='+Date.now(),{cache:'no-store'});
+    const resp=await fetch(API_BASE+'/account'+(force?'?force=1':''),{headers:apiHeaders(),cache:'no-store'});
+    if(resp.status===401){showLogin('登录已失效，请重新验证');return false}
     const data=await resp.json();
-    if(data.prices && Object.keys(data.prices).length>=5){
-      updateMarkets(data.prices);
-      initAll(data.prices,data.updated);
-      return true;
-    }
-  }catch(e){console.log('Price fetch:',e)}
-  if(initial){initAll(defaultPrices);document.getElementById('live-label').textContent='CACHED';}
+    if(!resp.ok)throw new Error(data.error+(data.detail?'：'+data.detail:''));
+    applyAccountSnapshot(data);return true;
+  }catch(e){showAccountFailure(e.message);console.log('Account fetch:',e)}
   return false;
 }
 
-// Boot: live first, defaults if offline
-fetchPrices(true);
-setInterval(()=>fetchPrices(),30000);
+// Boot: only verified live account data; never fall back to hard-coded positions.
+if(sessionToken)fetchAccount(true,true);
+setInterval(()=>{if(sessionToken)fetchAccount(false,true)},30000);
 
 // ── Layout ──
 // The dashboard is laid out by CSS Grid; there is no fixed-canvas scaling.
@@ -720,15 +734,9 @@ function animateNum(el,target,prefix='',suffix='',dec=0){let cur=0;const step=()
 // ── ECharts theme ──
 const theme={textStyle:{color:'#c8beb5'},legend:{textStyle:{color:'#8a7e72'}}};
 
-// ── Trend Chart ──
-const trendData=[];const benchData=[];let tv=880000;let bv=100000;
-for(let i=180;i>=0;i--){tv+=Math.round((Math.random()-.48)*8000);bv+=Math.round((Math.random()-.5)*2500);trendData.push(tv);benchData.push(bv)}
-// Scale benchmark to similar range
-const bMax=Math.max(...benchData);const bMin=Math.min(...benchData);
-const tMax=Math.max(...trendData);const tMin=Math.min(...trendData);
-const bScaled=benchData.map(v=>tMin+(v-bMin)/(bMax-bMin)*(tMax-tMin));
+// ── Account history: no fabricated curve; wait for a verified historical NAV source. ──
 const chartTrend=echarts.init(document.getElementById('chart-trend'));
-chartTrend.setOption({tooltip:{trigger:'axis',backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5',fontSize:11}},grid:{left:50,right:20,top:20,bottom:20},xAxis:{type:'category',data:trendData.map((_,i)=>`-${180-i}d`),axisLine:{lineStyle:{color:'rgba(255,255,255,.08)'}},axisLabel:{color:'#8a7e72',fontSize:9},boundaryGap:false},yAxis:{type:'value',axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>(v/1000).toFixed(0)+'k'},splitLine:{lineStyle:{color:'rgba(255,255,255,.03)'}}},series:[{type:'line',data:trendData,smooth:true,symbol:'none',name:'组合净值',lineStyle:{color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#ff5000'},{offset:1,color:'#ff8a00'}]),width:2},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(255,80,0,.15)'},{offset:1,color:'rgba(255,80,0,0)'}])}},{type:'line',data:bScaled,smooth:true,symbol:'none',name:'基准(S&P)',lineStyle:{color:'rgba(0,229,255,.4)',width:1,type:'dashed'}}]});
+chartTrend.setOption({title:{text:'尚未接入可验证的历史净值，已停止展示随机模拟曲线',left:'center',top:'42%',textStyle:{color:'#8a7e72',fontSize:12,fontWeight:'normal'}},xAxis:{show:false,type:'category'},yAxis:{show:false,type:'value'},series:[]});
 
 // ── Sector ──
 const sectors={};for(const p of allPos){const s=p.sector;sectors[s]=(sectors[s]||0)+p.costCny}
@@ -740,7 +748,7 @@ const chartRank=echarts.init(document.getElementById('chart-rank'));
 chartRank.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5'}},grid:{left:100,right:30,top:10,bottom:10},xAxis:{type:'value',axisLabel:{color:'#8a7e72',fontSize:9,formatter:v=>v+'%'},splitLine:{lineStyle:{color:'rgba(255,255,255,.03)'}}},yAxis:{type:'category',data:gainers.map(p=>p.sym).reverse(),axisLabel:{color:'#c8beb5',fontSize:10},axisLine:{show:false},axisTick:{show:false}},series:[{type:'bar',data:gainers.map(p=>({value:p.ret,itemStyle:{color:p.ret>=20?'#00e676':p.ret>=0?'#ff6a00':'#ff3d3d'}})).reverse(),barWidth:14}]});
 
 // ── Allocation ──
-const allocData=allPos.map(p=>({name:p.sym,value:p.costCny}));allocData.push({name:'现金',value:portfolio.cash*FX.HKD});allocData.push({name:'借款',value:0});
+const allocData=[];
 const chartAlloc=echarts.init(document.getElementById('chart-alloc'));
 chartAlloc.setOption({tooltip:{trigger:'item',backgroundColor:'rgba(20,16,12,.95)',borderColor:'rgba(255,80,0,.3)',textStyle:{color:'#c8beb5'}},series:[{type:'pie',radius:['40%','70%'],center:['50%','55%'],data:allocData,label:{color:'#8a7e72',fontSize:9,formatter:p=>p.name},color:['#ff5000','#ff6a00','#ff8a00','#ffc107','#00e5ff','#ff3d3d','#00e676','#ff7043','#ffab40','#ffd54f','#80cbc4','#ef5350','#66bb6a','#ab47bc','#42a5f5','rgba(255,255,255,.08)']}]});
 
@@ -758,9 +766,4 @@ panels.forEach((p,i)=>setTimeout(()=>p.classList.add('fade-up'),300+i*100));
 // ── Resize ──
 window.addEventListener('resize',()=>{scale();[chartTrend,chartSector,chartRank,chartAlloc,chartPerf].forEach(c=>c.resize());if(detailChart)detailChart.resize()});
 
-// ── Number animations on load ──
-setTimeout(()=>{
-  animateNum(document.getElementById('hero-kpi'),797912,'¥ ','');
-  document.getElementById('hero-bar').style.width='36.2%';
-},1200);
 </script></body></html>

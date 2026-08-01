@@ -1,14 +1,13 @@
 """股票看板 API — 行情代理、组合外标的筛选与 AI 分析。"""
-import json, os, urllib.request, ssl, time, math, statistics
+import json, os, urllib.request, urllib.error, ssl, time, math, statistics, hashlib, hmac, base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlencode
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
 CTX.verify_mode = False
-SINA = 'gb_goog,gb_aapl,gb_msft,gb_nvda,gb_tsla,gb_baba,gb_paas,gb_tlt,gb_smh,gb_appx,hk09988,hk00981,hk06030,hk00100,hk02824,gb_$inx,gb_ixic'
-
 RATINGS = {'Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'}
 RATING_SCORE = {'Sell': -2, 'Underweight': -1, 'Hold': 0, 'Overweight': 1, 'Buy': 2}
 EVIDENCE_KEYWORDS = ('价格', '收益', '仓位', '敞口', '集中', '回撤', '成本', '现金', '风险')
@@ -36,6 +35,13 @@ DISCOVERY_UNIVERSE = (
 )
 DISCOVERY_ALIASES = {'BABA':'ALIBABA', '9988.HK':'ALIBABA'}
 DISCOVERY_MARKET_CACHE = {'saved_at': 0, 'items': {}}
+ACCOUNT_CACHE = {'saved_at': 0, 'snapshot': None}
+SECTOR_BY_SYMBOL = {
+    'GOOG':'科技', 'AAPL':'科技', 'MSFT':'科技', 'NVDA':'半导体', 'TSLA':'汽车',
+    'BABA':'电商', 'PAAS':'矿业', 'TLT':'债券', 'SMH':'半导体', 'APPX':'杠杆ETF',
+    '9988.HK':'电商', '0981.HK':'半导体', '981.HK':'半导体', '6030.HK':'金融',
+    '0100.HK':'AI', '100.HK':'AI', '2824.HK':'黄金',
+}
 
 def as_float(value, default=0.0):
     try:
@@ -53,6 +59,247 @@ def normalized_symbol(symbol):
     if value.endswith('.HK'):
         value = value[:-3].zfill(4) + '.HK'
     return value
+
+def credential(name, legacy_name):
+    return os.getenv(name) or os.getenv(legacy_name) or ''
+
+def session_configured():
+    return bool(os.getenv('DASHBOARD_PASSWORD_HASH') and os.getenv('DASHBOARD_SESSION_SECRET'))
+
+def issue_session_token(ttl_seconds=12 * 60 * 60):
+    expires = str(int(time.time()) + ttl_seconds)
+    signature = hmac.new(os.environ['DASHBOARD_SESSION_SECRET'].encode(), expires.encode(), hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode(f'{expires}.{signature}'.encode()).decode().rstrip('=')
+
+def valid_session_token(token):
+    try:
+        padded = str(token or '') + '=' * (-len(str(token or '')) % 4)
+        expires, signature = base64.urlsafe_b64decode(padded).decode().split('.', 1)
+        if int(expires) < int(time.time()):
+            return False
+        expected = hmac.new(os.environ['DASHBOARD_SESSION_SECRET'].encode(), expires.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature, expected)
+    except (ValueError, TypeError, KeyError, UnicodeDecodeError):
+        return False
+
+def request_authorized():
+    header = request.headers.get('Authorization', '')
+    return session_configured() and header.startswith('Bearer ') and valid_session_token(header[7:])
+
+def auth_error():
+    return jsonify({'error':'登录已失效，请重新验证'}), 401
+
+def longbridge_signature(method, path, query, headers, secret, body=b''):
+    signed = ('authorization', 'x-api-key', 'x-timestamp')
+    header_text = ''.join(f'{key}:{str(headers.get(key, "")).strip()}\n' for key in signed)
+    plain = f'{method.upper()}|{path}|{query}|{header_text}|{";".join(signed)}|'
+    if body:
+        plain += hashlib.sha1(body).hexdigest()
+    text_to_sign = 'HMAC-SHA256|' + hashlib.sha1(plain.encode()).hexdigest()
+    return hmac.new(secret.encode(), text_to_sign.encode(), hashlib.sha256).hexdigest()
+
+def longbridge_request(path, query_params=None):
+    app_key = credential('LONGBRIDGE_APP_KEY', 'LONGPORT_APP_KEY')
+    app_secret = credential('LONGBRIDGE_APP_SECRET', 'LONGPORT_APP_SECRET')
+    access_token = credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN')
+    if not all((app_key, app_secret, access_token)):
+        raise RuntimeError('LongPort credentials are not configured in FC environment variables')
+    query = urlencode(query_params or {}, doseq=True)
+    region = 'us' if any(value.removeprefix('Bearer ').startswith('us_') for value in (app_key, app_secret, access_token)) else 'ap'
+    url = (os.getenv('LONGBRIDGE_HTTP_URL') or 'https://openapi.longbridge.com') + path
+    if query:
+        url += '?' + query
+    payload, last_error = None, None
+    for attempt in range(2):
+        headers = {
+            'authorization': access_token.removeprefix('Bearer '),
+            'x-api-key': app_key.removeprefix('Bearer '),
+            'x-timestamp': str(int(time.time() * 1000)),
+            'x-dc-region': region,
+            'accept-language': 'zh-CN',
+        }
+        signature = longbridge_signature('GET', path, query, headers, app_secret)
+        headers['x-api-signature'] = 'HMAC-SHA256 SignedHeaders=authorization;x-api-key;x-timestamp, Signature=' + signature
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            payload = json.loads(urllib.request.urlopen(req, timeout=15, context=CTX).read())
+            break
+        except (urllib.error.URLError, TimeoutError, ssl.SSLError) as exc:
+            last_error = exc
+            if attempt == 0:
+                time.sleep(.2)
+    if payload is None:
+        raise RuntimeError(f'LongPort network error: {last_error}')
+    if as_float(payload.get('code'), -1) != 0:
+        raise RuntimeError(f"LongPort API error {payload.get('code')}: {payload.get('message', 'unknown error')}")
+    return payload.get('data') or {}
+
+def rates_to_cny(exchange_data):
+    graph = {'CNY': {'CNY': 1.0}}
+    for item in exchange_data.get('exchanges', []):
+        base, other, rate = str(item.get('base_currency', '')).upper(), str(item.get('other_currency', '')).upper(), as_float(item.get('average_rate'))
+        if not base or not other or rate <= 0:
+            continue
+        graph.setdefault(other, {})[base] = rate
+        graph.setdefault(base, {})[other] = 1 / rate
+    result = {'CNY': 1.0}
+    for source in graph:
+        queue, visited = [(source, 1.0)], set()
+        while queue:
+            currency, factor = queue.pop(0)
+            if currency in visited:
+                continue
+            visited.add(currency)
+            if currency == 'CNY':
+                result[source] = factor
+                break
+            for target, rate in graph.get(currency, {}).items():
+                if target not in visited:
+                    queue.append((target, factor * rate))
+    return result
+
+def sina_codes(symbols):
+    codes, mapping = ['gb_$inx', 'gb_ixic'], {'gb_$inx':'SPX.US', 'gb_ixic':'IXIC.US'}
+    for raw in symbols:
+        symbol = normalized_symbol(raw)
+        if not symbol:
+            continue
+        if symbol.endswith('.HK'):
+            code = 'hk' + symbol[:-3].zfill(5)
+            mapping[code] = symbol
+        else:
+            code = 'gb_' + symbol.lower()
+            mapping[code] = symbol
+        if code not in codes:
+            codes.append(code)
+    return codes, mapping
+
+def fetch_sina_prices(symbols):
+    codes, mapping = sina_codes(symbols)
+    req = urllib.request.Request('http://hq.sinajs.cn/list=' + ','.join(codes), headers={'Referer':'https://finance.sina.com.cn'})
+    raw = urllib.request.urlopen(req, timeout=10, context=CTX).read().decode('gbk')
+    prices = {}
+    for line in raw.strip().split('\n'):
+        if '=' not in line:
+            continue
+        var = line.split('=')[0].split('hq_str_')[-1]
+        try:
+            parts = line.split('"')[1].split(',')
+            price = as_float(parts[1] if var.startswith('gb_') else parts[6])
+        except (IndexError, ValueError):
+            continue
+        symbol = mapping.get(var)
+        if symbol and price > 0:
+            prices[symbol] = price
+    return prices
+
+def aggregate_positions(stock_data):
+    combined = {}
+    for channel in stock_data.get('list', []):
+        account_channel = str(channel.get('account_channel', ''))
+        for item in channel.get('stock_info', []):
+            symbol = normalized_symbol(item.get('symbol'))
+            quantity, cost = as_float(item.get('quantity')), as_float(item.get('cost_price'))
+            if not symbol or quantity == 0:
+                continue
+            target = combined.setdefault(symbol, {
+                'symbol':symbol, 'name':str(item.get('symbol_name') or symbol),
+                'quantity':0.0, 'available_quantity':0.0, 'cost_value':0.0,
+                'currency':str(item.get('currency') or ('HKD' if symbol.endswith('.HK') else 'USD')).upper(),
+                'market':str(item.get('market') or ('HK' if symbol.endswith('.HK') else 'US')),
+                'account_channels':[],
+            })
+            target['quantity'] += quantity
+            target['available_quantity'] += as_float(item.get('available_quantity'))
+            target['cost_value'] += cost * quantity
+            if account_channel and account_channel not in target['account_channels']:
+                target['account_channels'].append(account_channel)
+    positions = []
+    for item in combined.values():
+        quantity = item.pop('quantity')
+        cost_value = item.pop('cost_value')
+        item.update({
+            'quantity':quantity, 'cost_price':cost_value / quantity if quantity else 0,
+            'sector':SECTOR_BY_SYMBOL.get(item['symbol'], '未分类'),
+        })
+        positions.append(item)
+    return sorted(positions, key=lambda item: (item['market'], item['symbol']))
+
+def build_account_snapshot(stock_data, balance_data, exchange_data, prices, fetched_at=None):
+    positions = aggregate_positions(stock_data)
+    fx = rates_to_cny(exchange_data)
+    for item in positions:
+        item['price'] = prices.get(item['symbol'])
+        item['fx_to_cny'] = fx.get(item['currency'])
+        if item['price'] is not None and item['fx_to_cny'] is not None:
+            item['market_value_cny'] = item['price'] * item['quantity'] * item['fx_to_cny']
+        else:
+            item['market_value_cny'] = None
+    balances = balance_data.get('list', [])
+    cash_by_currency = {}
+    net_assets_cny = buy_power_cny = 0.0
+    missing_conversion = []
+    for balance in balances:
+        currency, rate = str(balance.get('currency') or '').upper(), fx.get(str(balance.get('currency') or '').upper())
+        if rate is None:
+            missing_conversion.append(currency)
+            continue
+        net_assets_cny += as_float(balance.get('net_assets')) * rate
+        buy_power_cny += as_float(balance.get('buy_power')) * rate
+        for cash in balance.get('cash_infos', []):
+            cash_currency = str(cash.get('currency') or '').upper()
+            cash_by_currency[cash_currency] = cash_by_currency.get(cash_currency, 0) + as_float(cash.get('available_cash'))
+    total_cash_cny = 0.0
+    for currency, amount in cash_by_currency.items():
+        if currency not in fx:
+            missing_conversion.append(currency)
+        else:
+            total_cash_cny += amount * fx[currency]
+    missing_prices = [item['symbol'] for item in positions if item['price'] is None]
+    missing_fx = [item['currency'] for item in positions if item['fx_to_cny'] is None]
+    return {
+        'source':'longbridge_openapi', 'fetched_at':fetched_at or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'positions':positions, 'prices':prices, 'fx_to_cny':fx,
+        'account':{
+            'net_assets_cny':round(net_assets_cny, 2), 'total_cash_cny':round(total_cash_cny, 2),
+            'buy_power_cny':round(buy_power_cny, 2), 'cash_by_currency':cash_by_currency,
+            'balances':balances,
+        },
+        'complete':not (missing_prices or missing_fx or missing_conversion),
+        'missing_prices':missing_prices, 'missing_currencies':sorted(set(missing_fx + missing_conversion)),
+    }
+
+def get_account_snapshot(force=False):
+    cache = ACCOUNT_CACHE
+    if not force and cache['snapshot'] and time.time() - cache['saved_at'] < 15:
+        return cache['snapshot']
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        stock_future = pool.submit(longbridge_request, '/v1/asset/stock')
+        balance_future = pool.submit(longbridge_request, '/v1/asset/account')
+        exchange_future = pool.submit(longbridge_request, '/v1/asset/exchange_rates')
+        stock_data, balance_data, exchange_data = stock_future.result(), balance_future.result(), exchange_future.result()
+    symbols = [item['symbol'] for item in aggregate_positions(stock_data)]
+    prices = fetch_sina_prices(symbols)
+    snapshot = build_account_snapshot(stock_data, balance_data, exchange_data, prices)
+    cache.update({'saved_at':time.time(), 'snapshot':snapshot})
+    return snapshot
+
+def company_group_symbol(symbol):
+    return DISCOVERY_ALIASES.get(normalized_symbol(symbol), normalized_symbol(symbol))
+
+def live_position_context(snapshot, position):
+    invested = sum(as_float(item.get('market_value_cny')) for item in snapshot['positions']) or 1
+    position_value = as_float(position.get('market_value_cny'))
+    sector_value = sum(as_float(item.get('market_value_cny')) for item in snapshot['positions'] if item.get('sector') == position.get('sector'))
+    group = company_group_symbol(position['symbol'])
+    company_value = sum(as_float(item.get('market_value_cny')) for item in snapshot['positions'] if company_group_symbol(item['symbol']) == group)
+    account = snapshot.get('account') or {}
+    return {
+        'position_weight':position_value / invested, 'sector_weight':sector_value / invested,
+        'company_weight':company_value / invested, 'company_group':group,
+        'cash_ratio':as_float(account.get('total_cash_cny')) / (as_float(account.get('net_assets_cny')) or 1),
+        'annual_target':20, 'account_fetched_at':snapshot.get('fetched_at'), 'account_source':snapshot.get('source'),
+    }
 
 def score_discovery_candidate(closes, sector_weight=0.0):
     """Return an auditable 0-100 score from trend, momentum, risk and diversification."""
@@ -408,16 +655,54 @@ def no_cache(response):
 
 @app.route('/health')
 def health():
-    return jsonify({'status': 'ok', 'routes': ['/health', '/prices', '/recommendations', '/analysis']})
+    configured = all((
+        credential('LONGBRIDGE_APP_KEY', 'LONGPORT_APP_KEY'),
+        credential('LONGBRIDGE_APP_SECRET', 'LONGPORT_APP_SECRET'),
+        credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN'),
+    ))
+    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/prices', '/recommendations', '/analysis']})
+
+@app.route('/session', methods=['POST', 'OPTIONS'])
+def create_session():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    if not session_configured():
+        return jsonify({'error':'FC 尚未配置 DASHBOARD_PASSWORD_HASH 和 DASHBOARD_SESSION_SECRET'}), 503
+    body = request.get_json(force=True, silent=True) or {}
+    supplied = hashlib.sha256(str(body.get('password') or '').encode()).hexdigest()
+    if not hmac.compare_digest(supplied, os.environ['DASHBOARD_PASSWORD_HASH']):
+        return jsonify({'error':'密码错误'}), 401
+    return jsonify({'token':issue_session_token(), 'expires_in':12 * 60 * 60})
+
+@app.route('/account')
+def account():
+    if not request_authorized():
+        return auth_error()
+    try:
+        return jsonify(get_account_snapshot(force=request.args.get('force') == '1'))
+    except Exception as exc:
+        return jsonify({'error':'实时账户数据获取失败，已阻断持仓展示与个股分析', 'detail':str(exc), 'source':'longbridge_openapi'}), 503
 
 @app.route('/recommendations', methods=['POST', 'OPTIONS'])
 def recommendations():
     if request.method == 'OPTIONS':
         return ('', 204)
+    if not request_authorized():
+        return auth_error()
     body = request.get_json(force=True, silent=True) or {}
-    held_symbols = {normalized_symbol(item.get('symbol')) for item in body.get('holdings', []) if isinstance(item, dict)}
+    try:
+        snapshot = get_account_snapshot()
+    except Exception as exc:
+        return jsonify({'recommendations':[], 'error':'实时账户数据不可用，无法安全生成组合补充建议', 'detail':str(exc)}), 503
+    if not snapshot.get('complete'):
+        return jsonify({'recommendations':[], 'error':'账户快照缺少价格或汇率，无法准确计算组合互补性', 'missing_prices':snapshot.get('missing_prices'), 'missing_currencies':snapshot.get('missing_currencies')}), 503
+    held_symbols = {normalized_symbol(item.get('symbol')) for item in snapshot.get('positions', [])}
     held_groups = {DISCOVERY_ALIASES.get(symbol, symbol) for symbol in held_symbols}
-    sector_weights = {str(key): clamp(as_float(value), 0, 1) for key, value in (body.get('sector_weights') or {}).items()}
+    invested = sum(as_float(item.get('market_value_cny')) for item in snapshot['positions']) or 1
+    sector_weights = {}
+    for item in snapshot['positions']:
+        sector = str(item.get('sector') or '未分类')
+        sector_weights[sector] = sector_weights.get(sector, 0) + as_float(item.get('market_value_cny')) / invested
     market_data = discovery_market_data()
     ranked = []
     for meta in DISCOVERY_UNIVERSE:
@@ -444,36 +729,36 @@ def recommendations():
 
 @app.route('/prices')
 def prices():
+    if not request_authorized():
+        return auth_error()
     try:
-        req = urllib.request.Request(f'http://hq.sinajs.cn/list={SINA}',
-            headers={'Referer': 'https://finance.sina.com.cn'})
-        raw = urllib.request.urlopen(req, timeout=10, context=CTX).read().decode('gbk')
-        prices = {}
-        for line in raw.strip().split('\n'):
-            if '=' not in line: continue
-            var = line.split('=')[0]
-            try:
-                parts = line.split('"')[1].split(',')
-            except IndexError:
-                continue
-            if len(parts) < 8 or not parts[1]: continue  # 空行/字段不足直接跳过
-            if 'gb_' in var:
-                # 新浪美股: [1]=现价  [2]=涨跌幅  [3]=时间
-                # gb_$inx 是标普500 -> 映射为 SPX
-                sym = var.split('_')[-1].upper()  # GOOG / $INX / IXIC
-                if sym == '$INX': sym = 'SPX'
-                prices[sym + '.US'] = float(parts[1])
-            else:
-                # 新浪港股: [1]=名称  [3]=昨收  [6]=现价  [8]=涨跌幅
-                prices[str(int(var.split('hk')[-1])) + '.HK'] = float(parts[6])
-        return jsonify({'prices': prices, 'updated': time.strftime('%H:%M:%S')})
+        snapshot = get_account_snapshot()
+        return jsonify({'prices':snapshot['prices'], 'updated':snapshot['fetched_at'], 'source':snapshot['source']})
     except Exception as e:
-        import traceback
-        return jsonify({'error': str(e), 'trace': traceback.format_exc()[-300:]}), 500
+        return jsonify({'error':'实时账户行情获取失败', 'detail':str(e)}), 503
 
 @app.route('/analysis', methods=['POST'])
 def analysis():
+    if not request_authorized():
+        return auth_error()
     body = request.get_json(force=True, silent=True) or {}
+    try:
+        snapshot = get_account_snapshot(force=True)
+    except Exception as exc:
+        return jsonify({'error':'实时账户数据不可用，已阻断个股分析', 'detail':str(exc)}), 503
+    if not snapshot.get('complete'):
+        return jsonify({'error':'账户快照不完整，已阻断个股分析', 'missing_prices':snapshot.get('missing_prices'), 'missing_currencies':snapshot.get('missing_currencies')}), 503
+    symbol = normalized_symbol(body.get('symbol'))
+    position = next((item for item in snapshot['positions'] if normalized_symbol(item.get('symbol')) == symbol), None)
+    if not position:
+        return jsonify({'error':'该标的不在实时持仓中，不能生成持仓操作建议', 'symbol':symbol}), 409
+    body.update({
+        'symbol':position['symbol'], 'name':position['name'], 'ccy':position['currency'],
+        'cost':position['cost_price'], 'price':position['price'], 'qty':position['quantity'],
+        'return_pct':((position['price'] - position['cost_price']) / abs(position['cost_price']) * 100) if position['cost_price'] else 0,
+        'sector':position['sector'], 'portfolio_context':live_position_context(snapshot, position),
+        'price_updated_at':snapshot['fetched_at'], 'account_verified':True,
+    })
     risk_flags = build_risk_flags(body)
     key = os.getenv('DEEPSEEK_API_KEY', '')
     if not key:
@@ -506,7 +791,7 @@ JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case
         'symbol': str(body.get('symbol', 'UNKNOWN')),
         'decision_version': 2,
         'risk_flags': risk_flags,
-        'data_scope': 'position_price_portfolio_only',
+        'data_scope': 'verified_live_longbridge_position_price_portfolio',
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
     })
     return jsonify(result)

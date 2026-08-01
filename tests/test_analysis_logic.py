@@ -1,8 +1,14 @@
 import ast
+import base64
+import hashlib
+import hmac
 import math
+import os
 import statistics
+import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 def load_logic():
@@ -13,6 +19,8 @@ def load_logic():
         'normalize_analysis', 'build_risk_flags', 'validate_decision',
         'clamp', 'normalized_symbol', 'score_discovery_candidate',
         'build_discovery_recommendation',
+        'longbridge_signature', 'rates_to_cny', 'aggregate_positions',
+        'build_account_snapshot', 'issue_session_token', 'valid_session_token',
     }
     module = ast.Module(
         body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names],
@@ -24,6 +32,12 @@ def load_logic():
         'EVIDENCE_KEYWORDS': ('价格', '收益', '仓位', '敞口', '集中', '回撤', '成本', '现金', '风险'),
         'math': math,
         'statistics': statistics,
+        'hashlib': hashlib,
+        'hmac': hmac,
+        'base64': base64,
+        'os': os,
+        'time': time,
+        'SECTOR_BY_SYMBOL': {'AAPL':'科技', '0700.HK':'通信服务'},
     }
     exec(compile(module, 'app.py', 'exec'), namespace)
     return namespace
@@ -110,6 +124,15 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertEqual(normalize('700.HK'), '0700.HK')
         self.assertEqual(normalize('META.US'), 'META')
 
+    def test_session_token_is_signed_and_expires(self):
+        with patch.dict(os.environ, {'DASHBOARD_SESSION_SECRET':'test-secret'}):
+            with patch.object(time, 'time', return_value=1_000):
+                token=self.logic['issue_session_token'](60)
+                self.assertTrue(self.logic['valid_session_token'](token))
+            with patch.object(time, 'time', return_value=1_061):
+                self.assertFalse(self.logic['valid_session_token'](token))
+            self.assertFalse(self.logic['valid_session_token'](token+'x'))
+
     def test_discovery_score_rewards_missing_sector(self):
         closes = [100 + index * .35 + math.sin(index / 5) for index in range(252)]
         score = self.logic['score_discovery_candidate']
@@ -128,6 +151,35 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertGreater(result['price_target'], result['price'])
         self.assertLessEqual(result['target_position_pct'], 5)
         self.assertEqual(len(result['history']), 120)
+
+    def test_longbridge_signature_matches_official_protocol_fixture(self):
+        signature = self.logic['longbridge_signature'](
+            'GET', '/v1/asset/stock', '',
+            {'authorization':'test_token', 'x-api-key':'test_key', 'x-timestamp':'1700000000000'},
+            'test_secret',
+        )
+        self.assertEqual(signature, '6c26283969179bb29d59ec78c1ce6d8fddd02433efe11f4986a34734273cba7c')
+
+    def test_account_snapshot_merges_channels_and_uses_live_cost(self):
+        stock_data = {'list':[
+            {'account_channel':'cash', 'stock_info':[{'symbol':'AAPL.US','symbol_name':'Apple','quantity':'2','available_quantity':'2','currency':'USD','cost_price':'100','market':'US'}]},
+            {'account_channel':'margin', 'stock_info':[{'symbol':'AAPL.US','symbol_name':'Apple','quantity':'1','available_quantity':'1','currency':'USD','cost_price':'130','market':'US'}]},
+        ]}
+        positions = self.logic['aggregate_positions'](stock_data)
+        self.assertEqual(len(positions), 1)
+        self.assertEqual(positions[0]['quantity'], 3)
+        self.assertEqual(positions[0]['cost_price'], 110)
+        self.assertEqual(positions[0]['account_channels'], ['cash', 'margin'])
+
+    def test_account_snapshot_converts_live_balances_without_defaults(self):
+        stock_data = {'list':[{'account_channel':'cash','stock_info':[{'symbol':'AAPL.US','symbol_name':'Apple','quantity':'2','available_quantity':'2','currency':'USD','cost_price':'100','market':'US'}]}]}
+        balance_data = {'list':[{'currency':'USD','net_assets':'1000','buy_power':'400','cash_infos':[{'currency':'USD','available_cash':'100'}]}]}
+        exchange_data = {'exchanges':[{'base_currency':'CNY','other_currency':'USD','average_rate':7.0}]}
+        snapshot = self.logic['build_account_snapshot'](stock_data,balance_data,exchange_data,{'AAPL':120},'2026-08-01T00:00:00Z')
+        self.assertTrue(snapshot['complete'])
+        self.assertEqual(snapshot['account']['net_assets_cny'],7000)
+        self.assertEqual(snapshot['account']['total_cash_cny'],700)
+        self.assertEqual(snapshot['positions'][0]['market_value_cny'],1680)
 
 
 if __name__ == '__main__':
