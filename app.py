@@ -105,29 +105,48 @@ def longbridge_request(path, query_params=None):
     if not all((app_key, app_secret, access_token)):
         raise RuntimeError('LongPort credentials are not configured in FC environment variables')
     query = urlencode(query_params or {}, doseq=True)
-    region = 'us' if any(value.removeprefix('Bearer ').startswith('us_') for value in (app_key, app_secret, access_token)) else 'ap'
-    url = (os.getenv('LONGBRIDGE_HTTP_URL') or 'https://openapi.longbridge.com') + path
-    if query:
-        url += '?' + query
+    region = os.getenv('LONGBRIDGE_DC_REGION') or ('us' if any(value.removeprefix('Bearer ').startswith('us_') for value in (app_key, app_secret, access_token)) else 'ap')
+    configured_url = os.getenv('LONGBRIDGE_HTTP_URL')
+    access_region = str(os.getenv('LONGBRIDGE_REGION') or '').lower()
+    if configured_url:
+        hosts = [configured_url.rstrip('/')]
+    elif region == 'ap' and (access_region == 'cn' or str(os.getenv('FC_REGION') or os.getenv('FC_REGION_NAME') or '').startswith('cn-')):
+        hosts = ['https://openapi.longbridge.cn', 'https://openapi.longbridge.com']
+    else:
+        hosts = ['https://openapi.longbridge.com']
+        if region == 'ap':
+            hosts.append('https://openapi.longbridge.cn')
     payload, last_error = None, None
-    for attempt in range(2):
-        headers = {
-            'authorization': access_token.removeprefix('Bearer '),
-            'x-api-key': app_key.removeprefix('Bearer '),
-            'x-timestamp': str(int(time.time() * 1000)),
-            'x-dc-region': region,
-            'accept-language': 'zh-CN',
-        }
-        signature = longbridge_signature('GET', path, query, headers, app_secret)
-        headers['x-api-signature'] = 'HMAC-SHA256 SignedHeaders=authorization;x-api-key;x-timestamp, Signature=' + signature
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            payload = json.loads(urllib.request.urlopen(req, timeout=15, context=CTX).read())
+    for host in hosts:
+        url = host + path + (('?' + query) if query else '')
+        for attempt in range(2):
+            headers = {
+                'authorization': access_token.removeprefix('Bearer '),
+                'x-api-key': app_key.removeprefix('Bearer '),
+                'x-timestamp': str(int(time.time() * 1000)),
+                'x-dc-region': region,
+                'accept-language': 'zh-CN',
+            }
+            signature = longbridge_signature('GET', path, query, headers, app_secret)
+            headers['x-api-signature'] = 'HMAC-SHA256 SignedHeaders=authorization;x-api-key;x-timestamp, Signature=' + signature
+            try:
+                req = urllib.request.Request(url, headers=headers)
+                payload = json.loads(urllib.request.urlopen(req, timeout=15, context=CTX).read())
+                break
+            except urllib.error.HTTPError as exc:
+                try:
+                    error_payload = json.loads(exc.read())
+                    code = error_payload.get('code', exc.code)
+                    message = error_payload.get('message') or error_payload.get('msg') or str(exc.reason)
+                except Exception:
+                    code, message = exc.code, str(exc.reason)
+                raise RuntimeError(f'LongPort HTTP {exc.code}, code {code}: {message}') from exc
+            except (urllib.error.URLError, TimeoutError, ssl.SSLError) as exc:
+                last_error = f'{host}: {exc}'
+                if attempt == 0:
+                    time.sleep(.2)
+        if payload is not None:
             break
-        except (urllib.error.URLError, TimeoutError, ssl.SSLError) as exc:
-            last_error = exc
-            if attempt == 0:
-                time.sleep(.2)
     if payload is None:
         raise RuntimeError(f'LongPort network error: {last_error}')
     if as_float(payload.get('code'), -1) != 0:
@@ -699,6 +718,7 @@ def account():
     try:
         return jsonify(get_account_snapshot(force=request.args.get('force') == '1'))
     except Exception as exc:
+        app.logger.error('account_snapshot_failed: %s', exc)
         return jsonify({'error':'实时账户数据获取失败，已阻断持仓展示与个股分析', 'detail':str(exc), 'source':'longbridge_openapi'}), 503
 
 @app.route('/recommendations', methods=['POST', 'OPTIONS'])
