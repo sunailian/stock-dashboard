@@ -195,7 +195,7 @@ def sina_codes(symbols):
 
 def fetch_sina_prices(symbols):
     codes, mapping = sina_codes(symbols)
-    req = urllib.request.Request('http://hq.sinajs.cn/list=' + ','.join(codes), headers={'Referer':'https://finance.sina.com.cn'})
+    req = urllib.request.Request('https://hq.sinajs.cn/list=' + ','.join(codes), headers={'Referer':'https://finance.sina.com.cn', 'User-Agent':'Mozilla/5.0 stock-dashboard/1.0'})
     raw = urllib.request.urlopen(req, timeout=10, context=CTX).read().decode('gbk')
     prices = {}
     for line in raw.strip().split('\n'):
@@ -210,6 +210,54 @@ def fetch_sina_prices(symbols):
         symbol = mapping.get(var)
         if symbol and price > 0:
             prices[symbol] = price
+    return prices
+
+def fetch_tencent_prices(symbols):
+    codes, mapping = [], {}
+    for raw_symbol in symbols:
+        symbol = normalized_symbol(raw_symbol)
+        if symbol.endswith('.HK'):
+            code = 'hk' + symbol[:-3].zfill(5)
+        else:
+            code = 'us' + symbol
+        codes.append(code)
+        mapping[code] = symbol
+    if not codes:
+        return {}
+    req = urllib.request.Request(
+        'https://qt.gtimg.cn/q=' + ','.join(codes),
+        headers={'User-Agent':'Mozilla/5.0 stock-dashboard/1.0', 'Referer':'https://gu.qq.com/'},
+    )
+    raw = urllib.request.urlopen(req, timeout=10, context=CTX).read().decode('gbk')
+    prices = {}
+    for line in raw.strip().split(';'):
+        if '=' not in line:
+            continue
+        code = line.split('=')[0].strip().removeprefix('v_')
+        try:
+            parts = line.split('"')[1].split('~')
+            price = as_float(parts[3])
+        except (IndexError, ValueError):
+            continue
+        symbol = mapping.get(code)
+        if symbol and price > 0:
+            prices[symbol] = price
+    return prices
+
+def fetch_market_prices(symbols):
+    errors, prices = [], {}
+    try:
+        prices.update(fetch_sina_prices(symbols))
+    except Exception as exc:
+        errors.append(f'新浪 HTTPS: {exc}')
+    missing = [symbol for symbol in symbols if normalized_symbol(symbol) not in prices]
+    if missing:
+        try:
+            prices.update(fetch_tencent_prices(missing))
+        except Exception as exc:
+            errors.append(f'腾讯 HTTPS: {exc}')
+    if not prices and errors:
+        raise RuntimeError('；'.join(errors))
     return prices
 
 def aggregate_positions(stock_data):
@@ -313,7 +361,7 @@ def get_account_snapshot(force=False):
         raise RuntimeError('券商持仓接口不可用：' + source_errors['positions'])
     symbols = [item['symbol'] for item in aggregate_positions(stock_data)]
     try:
-        prices = fetch_sina_prices(symbols)
+        prices = fetch_market_prices(symbols)
     except Exception as exc:
         prices = {}
         source_errors['prices'] = str(exc)
