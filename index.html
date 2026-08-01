@@ -86,17 +86,21 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .srow{cursor:pointer;transition:background .2s ease}.srow:hover,.srow:focus-visible{background:rgba(255,80,0,.10);outline:none}.srow::after{content:'›';color:var(--text2);margin-left:5px}
 /* Unified recommendation pool */
 #rec-panel{min-height:132px}.rec-head-note{margin-left:auto;color:var(--text2);font-size:8px;letter-spacing:.5px}.rec-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:6px 14px 12px}.rec-card{min-width:0;text-align:left;color:var(--text);background:rgba(255,255,255,.025);border:1px solid rgba(255,80,0,.14);padding:10px;cursor:pointer;border-radius:2px}.rec-card:hover,.rec-card:focus-visible{background:rgba(255,80,0,.08);border-color:rgba(255,80,0,.35);outline:none}.rec-card-top{display:flex;align-items:center;justify-content:space-between;gap:6px}.rec-card-symbol{font:700 12px Mono,monospace;color:var(--orange3)}.rec-card-action{font-size:8px;padding:2px 6px;border-radius:2px}.rec-card-action.add{color:var(--green);background:rgba(0,230,118,.12)}.rec-card-action.hold{color:var(--amber);background:rgba(255,193,7,.12)}.rec-card-action.reduce{color:var(--red);background:rgba(255,61,61,.12)}.rec-card-name{margin-top:3px;color:var(--text2);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rec-card-reason{margin-top:7px;font-size:9px;line-height:1.45;min-height:27px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.rec-card-meta{display:flex;justify-content:space-between;gap:6px;margin-top:7px;color:var(--text2);font-size:8px}.rec-empty{grid-column:1/-1;padding:18px;text-align:center;color:var(--text2);font-size:10px}
-/* Portfolio health report */
-#health-panel{position:absolute;bottom:0;left:12px;right:12px;z-index:6;min-height:300px;padding-bottom:14px}
-#health-panel .panel-title{padding-bottom:4px}
-.health-head{display:grid;grid-template-columns:150px minmax(220px,1fr) minmax(280px,1.2fr);gap:18px;align-items:center;padding:8px 18px 14px;border-bottom:1px solid rgba(255,255,255,.05)}
-.health-score{width:112px;height:112px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--orange3) var(--score),rgba(255,255,255,.06) 0);position:relative;box-shadow:0 0 28px rgba(255,80,0,.12)}
-.health-score::after{content:'';position:absolute;inset:8px;border-radius:50%;background:var(--bg);border:1px solid rgba(255,80,0,.16)}
-.health-score-inner{position:relative;z-index:1;text-align:center}.health-score-num{font-size:34px;line-height:1;color:#fff}.health-score-max{font-size:9px;color:var(--text2);letter-spacing:1px;margin-top:3px}
-.health-summary .health-status{font-size:18px;color:var(--orange3);font-weight:600}.health-summary p{font-size:11px;line-height:1.65;color:var(--text);margin-top:8px;max-width:560px}.health-meta{font-size:9px;color:var(--text2);margin-top:8px;letter-spacing:.5px}
-.health-actions{border-left:1px solid rgba(255,255,255,.08);padding-left:18px}.health-actions .action-label{font-size:10px;color:var(--amber);letter-spacing:1px;margin-bottom:6px}.health-actions p{font-size:10px;line-height:1.7;color:var(--text)}
-.health-dims{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:12px 18px 0}.health-dim{background:rgba(255,255,255,.025);border:1px solid rgba(255,80,0,.10);padding:9px 10px;border-radius:2px}.health-dim-top{display:flex;justify-content:space-between;gap:6px;font-size:10px}.health-dim-top b{color:var(--text)}.health-dim-top span{color:var(--orange3);font-family:Mono,monospace}.health-dim small{display:block;color:var(--text2);font-size:9px;line-height:1.45;margin-top:5px;min-height:27px}.health-bar{height:3px;background:rgba(255,255,255,.07);margin-top:8px;border-radius:2px;overflow:hidden}.health-bar i{display:block;height:100%;width:var(--fill);background:linear-gradient(90deg,var(--orange),var(--orange3));border-radius:2px}
+/* Compact portfolio health summary + expandable detail */
+#health-panel{z-index:6;padding-bottom:10px}
+#health-panel .panel-title{padding-bottom:4px}.health-shadow-tag{margin-left:auto;color:var(--amber);font-size:8px;letter-spacing:.6px}
+.health-head{display:grid;grid-template-columns:96px minmax(260px,1.3fr) minmax(280px,1fr) auto;gap:16px;align-items:center;padding:6px 18px 10px}
+.health-score{width:76px;height:76px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--orange3) var(--score),rgba(255,255,255,.06) 0);position:relative;box-shadow:0 0 22px rgba(255,80,0,.12)}
+.health-score::after{content:'';position:absolute;inset:6px;border-radius:50%;background:var(--bg);border:1px solid rgba(255,80,0,.16)}
+.health-score-inner{position:relative;z-index:1;text-align:center}.health-score-num{font-size:25px;line-height:1;color:#fff}.health-score-max{font-size:8px;color:var(--text2);letter-spacing:1px;margin-top:2px}
+.health-summary .health-status{font-size:16px;color:var(--orange3);font-weight:600}.health-summary p{font-size:10px;line-height:1.55;color:var(--text);margin-top:5px;max-width:680px}.health-meta{font-size:8px;color:var(--text2);margin-top:5px;letter-spacing:.35px}
+.health-actions{border-left:1px solid rgba(255,255,255,.08);padding-left:16px}.health-actions .action-label{font-size:9px;color:var(--amber);letter-spacing:1px;margin-bottom:4px}.health-actions p{font-size:9px;line-height:1.55;color:var(--text)}
+.health-toggle{border:1px solid rgba(255,80,0,.25);background:rgba(255,80,0,.07);color:var(--orange3);padding:7px 10px;font-size:9px;cursor:pointer;white-space:nowrap}.health-toggle:hover{background:rgba(255,80,0,.14)}
+.health-detail{display:none;border-top:1px solid rgba(255,255,255,.05)}.health-detail.open{display:block}
+.health-dims{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:10px 18px 0}.health-dim{background:rgba(255,255,255,.025);border:1px solid rgba(255,80,0,.10);padding:9px 10px;border-radius:2px}.health-dim-top{display:flex;justify-content:space-between;gap:6px;font-size:10px}.health-dim-top b{color:var(--text)}.health-dim-top span{color:var(--orange3);font-family:Mono,monospace}.health-dim small{display:block;color:var(--text2);font-size:9px;line-height:1.45;margin-top:5px;min-height:27px}.health-bar{height:3px;background:rgba(255,255,255,.07);margin-top:8px;border-radius:2px;overflow:hidden}.health-bar i{display:block;height:100%;width:var(--fill);background:linear-gradient(90deg,var(--orange),var(--orange3));border-radius:2px}
 .health-note{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px 18px 0}.health-note-card{font-size:10px;line-height:1.6;padding:8px 10px;background:rgba(255,255,255,.02);border-left:2px solid var(--orange)}.health-note-card strong{display:block;color:var(--orange3);font-size:9px;letter-spacing:1px;margin-bottom:2px}.health-note-card p{color:var(--text)}
+/* Today's deterministic review queue */
+#action-panel{min-height:246px}.action-list{padding:7px 12px 10px;display:flex;flex-direction:column;gap:6px}.action-row{display:grid;grid-template-columns:68px 72px minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;padding:8px 9px;text-align:left;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.022);color:var(--text);cursor:pointer}.action-row:hover,.action-row:focus-visible{background:rgba(255,80,0,.09);border-color:rgba(255,80,0,.25);outline:none}.action-symbol{font:700 11px Mono,monospace;color:var(--orange3)}.action-badge{font-size:8px;text-align:center;padding:3px 5px;border-radius:2px}.action-badge.hold{color:var(--amber);background:rgba(255,193,7,.12)}.action-badge.add{color:var(--green);background:rgba(0,230,118,.12)}.action-badge.reduce{color:var(--red);background:rgba(255,61,61,.12)}.action-reason{min-width:0}.action-reason b{display:block;font-size:9px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.action-reason small{display:block;margin-top:3px;color:var(--text2);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.action-go{color:var(--text2);font-size:14px}.action-foot{padding:0 14px 10px;color:var(--text2);font-size:8px;line-height:1.5}
 /* Single-position detail view */
 #stock-detail-modal{position:fixed;inset:0;z-index:500;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(5,4,3,.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 #stock-detail-modal.open{display:flex}.stock-detail-card{width:min(980px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:auto;background:linear-gradient(145deg,rgba(25,18,13,.98),rgba(10,8,6,.98));border:1px solid rgba(255,80,0,.35);box-shadow:0 20px 70px rgba(0,0,0,.55);border-radius:3px;padding:18px}.stock-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid rgba(255,255,255,.07);padding-bottom:12px}.stock-detail-kicker{font-size:9px;color:var(--text2);letter-spacing:2px}.stock-detail-title{font-size:24px;color:var(--orange3);font-weight:700;margin-top:3px}.stock-detail-name{font-size:11px;color:var(--text2);margin-left:8px;font-weight:400}.stock-detail-close{border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text2);font-size:16px;line-height:1;width:30px;height:30px;cursor:pointer;border-radius:2px}.stock-detail-close:hover{color:#fff;background:rgba(255,80,0,.15)}
@@ -121,16 +125,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #hero .sub-kpis{flex-wrap:wrap;gap:16px}
   #hero .sub-kpi .val{font-size:18px}
   #hero .progress-wrap{width:100%}
-  #trend-chart,#sector-panel,#rank-panel,#alloc-panel,#perf-panel{position:static!important;width:100%!important;height:280px!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;margin:0!important}
+  #trend-chart,#sector-panel,#rank-panel,#alloc-panel,#perf-panel,#action-panel{position:static!important;width:100%!important;height:280px!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;margin:0!important}
   #us-panel,#hk-panel{position:static!important;width:100%!important;height:260px!important;left:auto!important;right:auto!important;top:auto!important;margin:0!important;display:flex!important;flex-direction:column!important}
   #rec-panel{position:static!important;width:100%!important;height:auto!important;margin:0!important}.rec-strip{grid-template-columns:1fr}.rec-card-reason{min-height:0}
+  #header{order:0}#hero{order:1}#health-panel{order:2}#trend-chart{order:3}#action-panel{order:4}#sector-panel{order:5}#alloc-panel{order:6}#us-panel{order:7}#rank-panel{order:8}#hk-panel{order:9}#perf-panel{order:10}#rec-panel{order:11}
   #particles{display:none}
   #glow-cursor{display:none}
   .panel{backdrop-filter:none;-webkit-backdrop-filter:none}
   #loading{display:none!important}
 }
 @media(max-width:480px){
-  #trend-chart,#sector-panel,#rank-panel,#alloc-panel,#perf-panel{height:220px!important}
+  #trend-chart,#sector-panel,#rank-panel,#alloc-panel,#perf-panel,#action-panel{height:220px!important}
   #us-panel,#hk-panel{height:220px!important}
   #hero .kpi{font-size:32px}
   #hero .sub-kpis{gap:10px}
@@ -141,7 +146,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 @media(min-width:769px){
   html{min-height:100%;overflow-x:hidden;overflow-y:auto}
   body{min-width:0;min-height:100%;height:auto;overflow-x:hidden;overflow-y:auto}
-  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px 246px minmax(246px,1fr) auto auto;grid-template-areas:'header header header' 'sector hero alloc' 'us trend rank' 'hk . perf' 'risk risk risk' 'rec rec rec';gap:12px;padding:0 12px 12px;overflow:visible}
+  #stage{position:relative;inset:auto;width:100%;min-height:100vh;height:auto;transform:none!important;display:grid;grid-template-columns:336px minmax(0,1fr) 336px;grid-template-rows:64px 280px auto 246px minmax(246px,1fr) auto;grid-template-areas:'header header header' 'sector hero alloc' 'health health health' 'us trend rank' 'hk action perf' 'rec rec rec';gap:12px;padding:0 12px 12px;overflow:visible}
   #header{position:relative;grid-area:header;inset:auto;width:auto;height:auto;padding:0 12px}
   #fs-btn{top:22px;right:12px}
   #hero{position:relative;grid-area:hero;inset:auto;width:auto;height:auto;min-width:0}
@@ -152,8 +157,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #alloc-panel{position:relative;grid-area:alloc;inset:auto;width:auto;height:auto}
   #perf-panel{position:relative;grid-area:perf;inset:auto;width:auto;height:auto}
   #hk-panel{position:relative;grid-area:hk;inset:auto;width:auto;height:auto;min-height:246px;overflow-y:auto}
+  #action-panel{position:relative;grid-area:action;inset:auto;width:auto;height:auto}
   #rec-panel{position:relative;grid-area:rec;inset:auto;width:auto;height:auto}
-  #health-panel{display:block!important;position:relative!important;grid-area:risk;inset:auto!important;width:auto!important;height:auto!important;min-height:300px}
+  #health-panel{display:block!important;position:relative!important;grid-area:health;inset:auto!important;width:auto!important;height:auto!important;min-height:0}
   #particles{inset:0;width:100%;height:100%;overflow:hidden}
 }
 @media(min-width:769px) and (max-width:1200px){
@@ -169,14 +175,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   #stage{min-height:100vh;padding-bottom:16px}
 }
 @media(max-width:900px) and (min-width:769px){
-  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto 210px 280px 280px minmax(246px,1fr) auto auto;grid-template-areas:'header header' 'hero hero' 'trend trend' 'sector alloc' 'us rank' 'hk perf' 'risk risk' 'rec rec'}
+  #stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:64px auto auto 210px 246px 280px 280px 280px auto;grid-template-areas:'header header' 'hero hero' 'health health' 'trend trend' 'action action' 'sector alloc' 'us rank' 'hk perf' 'rec rec'}
 }
 @media(max-width:1100px) and (min-width:769px){
-  .health-head{grid-template-columns:130px minmax(180px,1fr) minmax(220px,1fr);gap:12px}.health-dims{gap:5px;padding-left:12px;padding-right:12px}.health-note{padding-left:12px;padding-right:12px}
+  .health-head{grid-template-columns:80px minmax(180px,1fr) minmax(220px,1fr);gap:12px}.health-toggle{grid-column:1/-1}.health-dims{gap:5px;padding-left:12px;padding-right:12px}.health-note{padding-left:12px;padding-right:12px}
 }
 @media(max-width:768px){
   #health-panel{position:static!important;width:100%!important;height:auto!important;min-height:0!important;margin:0!important}
-  .health-head{grid-template-columns:1fr;gap:12px;padding:12px}.health-score{margin:auto}.health-actions{border-left:0;border-top:1px solid rgba(255,255,255,.08);padding:10px 0 0}.health-dims{grid-template-columns:1fr 1fr;padding:10px 12px 0}.health-note{grid-template-columns:1fr;padding:10px 12px 0}
+  .health-head{grid-template-columns:80px 1fr;gap:10px;padding:10px 12px}.health-score{margin:auto}.health-actions{grid-column:1/-1;border-left:0;border-top:1px solid rgba(255,255,255,.08);padding:8px 0 0}.health-toggle{grid-column:1/-1}.health-dims{grid-template-columns:1fr 1fr;padding:10px 12px 0}.health-note{grid-template-columns:1fr;padding:10px 12px 0}.action-row{grid-template-columns:60px 68px minmax(0,1fr) auto}
   #stock-detail-modal{padding:0}.stock-detail-card{width:100%;height:100%;max-height:none;border-radius:0;padding:14px}.stock-detail-body{grid-template-columns:1fr}.stock-detail-chart{height:220px}.stock-detail-metrics{grid-template-columns:1fr 1fr}.stock-levels{grid-template-columns:1fr 1fr}.stock-detail-title{font-size:20px}.analysis-evidence,.analysis-grid{grid-template-columns:1fr}
 }
 </style></head>
@@ -245,8 +251,21 @@ if(sessionToken)document.getElementById('auth-overlay').style.display='none';
     </div>
   </div>
 
+  <!-- PORTFOLIO HEALTH REPORT -->
+  <div class="panel" id="health-panel">
+    <div class="panel-title">📋 持仓健康度总览 · PORTFOLIO HEALTH <span class="health-shadow-tag">风险结论置顶 · 模型影子模式</span></div>
+    <div class="health-head">
+      <div class="health-score" id="health-score-ring" style="--score:0%"><div class="health-score-inner"><div class="health-score-num" id="health-score">--</div><div class="health-score-max">/ 100</div></div></div>
+      <div class="health-summary"><div class="health-status" id="health-status">分析中...</div><p id="health-summary-text">正在读取服务端组合风险快照。</p><div class="health-meta">评分仅衡量风险健康度，不使用收益目标鼓励加仓。</div></div>
+      <div class="health-actions"><div class="action-label">优先动作 · PRIORITY ACTION</div><p id="health-priority">等待持仓数据同步后生成。</p></div>
+      <button class="health-toggle" id="health-toggle" type="button" aria-expanded="false" aria-controls="health-detail">展开详细风险 ↓</button>
+    </div>
+    <div class="health-detail" id="health-detail"><div class="health-dims" id="health-dims"></div><div class="health-note" id="health-notes"></div></div>
+  </div>
+
   <!-- TREND -->
   <div class="panel" id="trend-chart"><div class="panel-title">历史资产走势 · ACCOUNT HISTORY</div><div class="chart-wrap" id="chart-trend"></div></div>
+  <div class="panel" id="action-panel"><div class="panel-title">今日操作队列 · REVIEW QUEUE <span class="rec-head-note">按组合风险贡献排序</span></div><div class="action-list" id="action-list"><div class="rec-empty">等待组合风险与历史决策同步…</div></div><div class="action-foot" id="action-foot">只展示已验证决策；没有个股分析记录时仅提示“优先复核”，不会自动生成买卖指令。</div></div>
 
   <!-- LEFT -->
   <div class="panel" id="sector-panel"><div class="panel-title">板块分布 · SECTOR</div><div class="chart-wrap" id="chart-sector"></div></div>
@@ -257,18 +276,6 @@ if(sessionToken)document.getElementById('auth-overlay').style.display='none';
   <div class="panel" id="alloc-panel"><div class="panel-title">持仓占比 · ALLOCATION</div><div class="chart-wrap" id="chart-alloc"></div></div>
   <div class="panel" id="rank-panel"><div class="panel-title">盈利排行 · TOP GAINERS</div><div class="chart-wrap" id="chart-rank"></div></div>
   <div class="panel" id="perf-panel"><div class="panel-title">收益率分布 · P&L SPECTRUM</div><div class="chart-wrap" id="chart-perf"></div></div>
-
-  <!-- PORTFOLIO HEALTH REPORT -->
-  <div class="panel" id="health-panel">
-    <div class="panel-title">📋 持仓健康度总览 · PORTFOLIO HEALTH REPORT</div>
-    <div class="health-head">
-      <div class="health-score" id="health-score-ring" style="--score:0%"><div class="health-score-inner"><div class="health-score-num" id="health-score">--</div><div class="health-score-max">/ 100</div></div></div>
-      <div class="health-summary"><div class="health-status" id="health-status">分析中...</div><p id="health-summary-text">正在根据最新持仓、收益和现金数据计算组合健康度。</p><div class="health-meta">评分模型：收益质量 25% · 分散度 20% · 风险控制 20% · 流动性 15% · 目标达成 20%</div></div>
-      <div class="health-actions"><div class="action-label">优先动作 · PRIORITY ACTION</div><p id="health-priority">等待持仓数据同步后生成。</p></div>
-    </div>
-    <div class="health-dims" id="health-dims"></div>
-    <div class="health-note" id="health-notes"></div>
-  </div>
 
   <div class="panel" id="rec-panel">
     <div class="panel-title">🔥 潜力个股发现 · PORTFOLIO COMPLEMENTS <span class="rec-head-note">严格排除现有持仓 · 每日量化筛选</span></div>
@@ -307,43 +314,12 @@ function calcAllPos(prices){
 function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
 function renderHealthReport(positions){
   if(portfolioRiskData){renderServerRiskReport(portfolioRiskData,marketRegimeData);return}
-  if(!positions.length)return;
-  const comparable=positions.filter(p=>p.returnComparable),invested=positions.reduce((sum,p)=>sum+p.marketValueCny,0);
-  const positive=comparable.filter(p=>p.ret>=0).length;
-  const positiveRate=positive/(comparable.length||1);
-  const losingWeight=positions.filter(p=>p.returnComparable&&p.ret<0).reduce((sum,p)=>sum+p.marketValueCny,0)/(invested||1);
-  const sectors={};positions.forEach(p=>{sectors[p.sector]=(sectors[p.sector]||0)+p.marketValueCny});
-  const sectorCount=Object.keys(sectors).length;
-  const largest=[...positions].sort((a,b)=>b.marketValueCny-a.marketValueCny)[0];
-  const largestWeight=largest.marketValueCny/(invested||1);
-  const leverage=positions.filter(p=>p.sector==='杠杆ETF').length;
-  const totalReturn=portfolio.performance?portfolio.performance.ytd_return*100:portfolio.totalReturn;
-  const annualizedPace=portfolio.performance&&portfolio.performance.annualized_pace!==null?portfolio.performance.annualized_pace*100:totalReturn;
-  const performanceScore=clamp(Math.round(10+totalReturn/portfolio.annualTarget*10+positiveRate*5),0,25);
-  const diversificationScore=clamp(Math.round(8+Math.min(8,sectorCount/7*8)+Math.max(0,4-largestWeight*4)),0,20);
-  const riskScore=clamp(Math.round(20-Math.min(12,losingWeight*12)-leverage*3),0,20);
-  const liquidityScore=clamp(Math.round(5+Math.min(1,portfolio.buyPower/(portfolio.netAssets||1))*10),0,15);
-  const goalScore=clamp(Math.round(Math.min(20,10+annualizedPace/portfolio.annualTarget*8)),0,20);
-  const dimensions=[
-    {name:'收益质量',score:performanceScore,max:25,desc:`${positive}/${comparable.length} 个可比成本仓位为正收益`},
-    {name:'分散度',score:diversificationScore,max:20,desc:`覆盖 ${sectorCount} 个板块，最大仓位 ${(largestWeight*100).toFixed(0)}%`},
-    {name:'风险控制',score:riskScore,max:20,desc:`亏损仓位权重 ${(losingWeight*100).toFixed(0)}%${leverage?'，含杠杆 ETF':''}`},
-    {name:'流动性',score:liquidityScore,max:15,desc:`购买力约占净资产 ${(portfolio.buyPower/portfolio.netAssets*100).toFixed(0)}%`},
-    {name:'目标达成',score:goalScore,max:20,desc:`YTD ${totalReturn.toFixed(1)}%，年化节奏 ${annualizedPace.toFixed(1)}%，目标 ${portfolio.annualTarget}%`}
-  ];
-  const total=dimensions.reduce((sum,d)=>sum+d.score,0);
-  const status=total>=85?'健康':total>=70?'良好，但需优化':total>=55?'中等，建议收敛风险':'偏弱，需要优先整改';
-  const weak=[...dimensions].sort((a,b)=>(a.score/a.max)-(b.score/b.max))[0];
-  const worst=[...positions].sort((a,b)=>a.ret-b.ret)[0];
-  const summary=total>=85?'组合整体结构稳健，收益表现已超过年化目标，但仍需持续检查集中度和回撤。':total>=70?'组合具备较好的收益基础和流动性，主要拖累来自亏损仓位与风险暴露，适合边持有边收敛风险。':'组合仍有修复空间，当前应优先降低高波动和深度亏损仓位，避免用新增资金掩盖结构性问题。';
-  document.getElementById('health-score').textContent=total;
-  document.getElementById('health-score-ring').style.setProperty('--score',total+'%');
-  document.getElementById('health-status').textContent=status;
-  document.getElementById('health-summary-text').textContent=summary;
-  document.getElementById('health-priority').textContent=`优先处理「${weak.name}」维度：${weak.desc}。建议先复核 ${worst.sym}（当前 ${worst.ret.toFixed(1)}%）的止损/减仓规则，再调整新增仓位。`;
-  document.getElementById('health-dims').innerHTML=dimensions.map(d=>`<div class="health-dim"><div class="health-dim-top"><b>${d.name}</b><span>${d.score}/${d.max}</span></div><small>${d.desc}</small><div class="health-bar"><i style="--fill:${d.score/d.max*100}%"></i></div></div>`).join('');
-  const largestLabel=largest.sym+(largestWeight>.2?'集中度偏高':'占比可控');
-  document.getElementById('health-notes').innerHTML=`<div class="health-note-card"><strong>数据 · LIVE</strong><p>数量、成本和资产来自 LongPort 实时账户；YTD与年化节奏来自长桥组合盈亏接口，不再使用持仓浮盈率冒充账户业绩。</p></div><div class="health-note-card"><strong>关注 · WATCH</strong><p>${largestLabel}；${leverage?'杠杆 ETF 会放大波动，需单独设定仓位上限。':'目前未发现杠杆 ETF 集中风险。'}</p></div><div class="health-note-card"><strong>执行 · ACTION</strong><p>保留购买力作为缓冲，新增资金优先补足低相关资产，避免继续加码当前最弱仓位。</p></div>`;
+  document.getElementById('health-score').textContent='--';
+  document.getElementById('health-score-ring').style.setProperty('--score','0%');
+  document.getElementById('health-status').textContent=positions.length?'正在计算组合风险':'等待实时持仓';
+  document.getElementById('health-summary-text').textContent='健康度必须由服务端历史风险快照计算；加载完成前不使用浏览器端简化评分。';
+  document.getElementById('health-priority').textContent='等待风险贡献、回撤和尾部风险数据。';
+  renderActionQueue(null);
 }
 
 function renderServerRiskReport(risk,market){
@@ -371,6 +347,22 @@ function renderServerRiskReport(risk,market){
   document.getElementById('health-dims').innerHTML=dimensions.map(item=>`<div class="health-dim"><div class="health-dim-top"><b>${item.name}</b><span>${item.score}/${item.max}</span></div><small>${item.desc}</small><div class="health-bar"><i style="--fill:${item.score/item.max*100}%"></i></div></div>`).join('');
   const us=market?.markets?.US,hk=market?.markets?.HK,warnings=(quality.warnings||[]).slice(0,2).join('；')||'暂无额外数据警告';
   document.getElementById('health-notes').innerHTML=`<div class="health-note-card"><strong>市场 · REGIME</strong><p>美股：${escapeHTML(marketLabel(us))}；港股：${escapeHTML(marketLabel(hk))}。状态仅调整新增风险预算。</p></div><div class="health-note-card"><strong>质量 · DATA</strong><p>${escapeHTML(warnings)}</p></div><div class="health-note-card"><strong>约束 · POLICY</strong><p>${risk.policy_status==='confirmed'?'按已确认策略检查目标区间。':'目标权重尚未配置，不生成虚假的补仓数量。'}</p></div>`;
+  renderActionQueue(risk);
+}
+
+function renderActionQueue(risk){
+  const container=document.getElementById('action-list');if(!container)return;
+  const contributors=risk?.risk_contributions||[];
+  const ranked=contributors.length?contributors.slice(0,4).map(item=>({symbol:item.symbol,risk:Number(item.variance_contribution_pct)})):[...allPos].sort((a,b)=>b.marketValueCny-a.marketValueCny).slice(0,4).map(item=>({symbol:item.sym,risk:null}));
+  if(!ranked.length){container.innerHTML='<div class="rec-empty">暂无可生成操作队列的实时持仓。</div>';return}
+  container.innerHTML=ranked.map(item=>{
+    const position=allPos.find(candidate=>candidate.sym===item.symbol),decision=position?getCachedAnalysis(position):null,view=decision?ratingView(decision.rating):{label:'优先复核',tone:'hold'};
+    const returnText=position?.returnComparable?`当前收益 ${position.ret>=0?'+':''}${position.ret.toFixed(1)}%`:'收益暂不可比';
+    const riskText=Number.isFinite(item.risk)?`组合风险贡献 ${item.risk.toFixed(1)}%`:'按当前市值优先级排序';
+    const trigger=decision?(decision.stop_loss?`风险价 ${formatNativePrice(decision.stop_loss,position?.ccy||'USD')}`:`决策 ${formatUTC8Time(decision.generated_at)}`):'点击后生成确定性个股分析';
+    return `<button class="action-row" data-symbol="${escapeHTML(item.symbol)}" aria-label="复核 ${escapeHTML(item.symbol)}"><span class="action-symbol">${escapeHTML(item.symbol)}</span><span class="action-badge ${view.tone}">${view.label}</span><span class="action-reason"><b>${escapeHTML(riskText)} · ${escapeHTML(returnText)}</b><small>${escapeHTML(trigger)}</small></span><span class="action-go">›</span></button>`;
+  }).join('');
+  document.getElementById('action-foot').textContent=`队列更新时间 ${formatUTC8Time(risk?.fetched_at||accountFetchedAt)}；排序用于确定复核先后，不等同于卖出顺序。`;
 }
 
 async function fetchRiskReport(force=false){
@@ -536,6 +528,7 @@ function saveAnalysis(p,data){
   const log=getDecisionLog();
   if(!log.some(item=>item.symbol===p.sym&&item.generated_at===data.generated_at))log.unshift({decision_id:`${p.sym}-${data.generated_at}`,symbol:p.sym,price:p.price,rating:data.rating,original_rating:data.consistency?.original_rating||data.rating,generated_at:data.generated_at,confidence:data.confidence,confidence_basis:data.confidence_basis,change_reason:data.change_reason,consistency:data.consistency,entry_price:data.entry_price,stop_loss:data.stop_loss,price_target:data.price_target,portfolio_context:portfolioContext,benchmark_symbol:p.ccy==='USD'?'SPX.US':null,benchmark_price:p.ccy==='USD'?latestMarketPrices['SPX.US']||null:null,outcomes:{}});
   writeDecisionLog(log);
+  renderActionQueue(portfolioRiskData);
 }
 function renderEvidence(id,items){document.getElementById(id).innerHTML=(items||[]).map(item=>`<li>${escapeHTML(item)}</li>`).join('')||'<li>暂无有效证据</li>'}
 function ratingView(rating){
@@ -726,8 +719,8 @@ function openStockDetail(symbol){
   loadHeldHistory(p).then(()=>{if(activeDetailSymbol===p.sym)fetchStructuredAnalysis(p)}).catch(error=>{document.querySelector('.stock-detail-chart-title').textContent='真实历史行情加载失败';document.getElementById('analysis-meta').textContent='分析已阻断：'+error.message});
 }
 function closeStockDetail(){document.getElementById('stock-detail-modal').classList.remove('open');document.body.style.overflow='';activeDetailSymbol='';}
-document.addEventListener('click',e=>{const target=e.target.closest('.srow,.rec-card');if(target)openStockDetail(target.dataset.symbol);if(e.target.id==='analysis-refresh'&&activeDetailSymbol){const p=allPos.find(x=>x.sym===activeDetailSymbol);if(p)loadHeldHistory(p,true).then(()=>fetchStructuredAnalysis(p,true)).catch(error=>{document.getElementById('analysis-meta').textContent='刷新失败：'+error.message});else if(discoveryCandidates.some(x=>x.sym===activeDetailSymbol)){const symbol=activeDetailSymbol;fetchRecommendations(true).then(()=>{const updated=discoveryCandidates.find(x=>x.sym===symbol);if(updated)openDiscoveryDetail(updated)})}}if(e.target.id==='stock-detail-close'||e.target.id==='stock-detail-modal')closeStockDetail()});
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList.contains('srow'))openStockDetail(e.target.dataset.symbol);if(e.key==='Escape')closeStockDetail()});
+document.addEventListener('click',e=>{const target=e.target.closest('.srow,.rec-card,.action-row');if(target)openStockDetail(target.dataset.symbol);if(e.target.id==='health-toggle'){const detail=document.getElementById('health-detail'),open=detail.classList.toggle('open');e.target.setAttribute('aria-expanded',String(open));e.target.textContent=open?'收起详细风险 ↑':'展开详细风险 ↓'}if(e.target.id==='analysis-refresh'&&activeDetailSymbol){const p=allPos.find(x=>x.sym===activeDetailSymbol);if(p)loadHeldHistory(p,true).then(()=>fetchStructuredAnalysis(p,true)).catch(error=>{document.getElementById('analysis-meta').textContent='刷新失败：'+error.message});else if(discoveryCandidates.some(x=>x.sym===activeDetailSymbol)){const symbol=activeDetailSymbol;fetchRecommendations(true).then(()=>{const updated=discoveryCandidates.find(x=>x.sym===symbol);if(updated)openDiscoveryDetail(updated)})}}if(e.target.id==='stock-detail-close'||e.target.id==='stock-detail-modal')closeStockDetail()});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.target.classList.contains('srow')||e.target.classList.contains('action-row')))openStockDetail(e.target.dataset.symbol);if(e.key==='Escape')closeStockDetail()});
 
 // ── Market tickers ──
 function updateMarkets(prices){
