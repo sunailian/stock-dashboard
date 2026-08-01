@@ -35,6 +35,7 @@ DISCOVERY_UNIVERSE = (
 )
 DISCOVERY_ALIASES = {'BABA':'ALIBABA', '9988.HK':'ALIBABA'}
 DISCOVERY_MARKET_CACHE = {'saved_at': 0, 'items': {}}
+HISTORY_CACHE = {}
 ACCOUNT_CACHE = {'saved_at': 0, 'snapshot': None}
 SECTOR_BY_SYMBOL = {
     'GOOG':'科技', 'AAPL':'科技', 'MSFT':'科技', 'NVDA':'半导体', 'TSLA':'汽车',
@@ -259,6 +260,77 @@ def fetch_market_prices(symbols):
     if not prices and errors:
         raise RuntimeError('；'.join(errors))
     return prices
+
+def tencent_history_symbol(symbol):
+    symbol = normalized_symbol(symbol)
+    if symbol.endswith('.HK'):
+        return 'hk' + symbol[:-3].zfill(5)
+    req = urllib.request.Request(
+        'https://qt.gtimg.cn/q=us' + symbol,
+        headers={'User-Agent':'Mozilla/5.0 stock-dashboard/1.0', 'Referer':'https://gu.qq.com/'},
+    )
+    raw = urllib.request.urlopen(req, timeout=10, context=CTX).read().decode('gbk')
+    try:
+        provider_symbol = raw.split('"')[1].split('~')[2]
+    except IndexError as exc:
+        raise ValueError(f'{symbol} 无法识别美股交易所') from exc
+    if not provider_symbol or '.' not in provider_symbol:
+        raise ValueError(f'{symbol} 缺少交易所后缀')
+    return 'us' + provider_symbol
+
+def technical_snapshot(points):
+    closes = [as_float(item.get('close')) for item in points if as_float(item.get('close')) > 0]
+    if len(closes) < 60:
+        raise ValueError('真实日线少于60个交易日')
+    price = closes[-1]
+    sma = lambda days: statistics.fmean(closes[-min(days, len(closes)):])
+    momentum = lambda days: price / closes[-min(days + 1, len(closes))] - 1
+    returns = [math.log(closes[i] / closes[i - 1]) for i in range(max(1, len(closes) - 20), len(closes))]
+    volatility = statistics.pstdev(returns) * math.sqrt(252) if len(returns) > 1 else 0
+    true_ranges = []
+    clean_points = [item for item in points if as_float(item.get('close')) > 0]
+    start = max(0, len(clean_points) - 15)
+    for index in range(start, len(clean_points)):
+        item = clean_points[index]
+        high, low = as_float(item.get('high')), as_float(item.get('low'))
+        previous = as_float(clean_points[index - 1].get('close')) if index > 0 else as_float(item.get('open'))
+        true_ranges.append(max(high - low, abs(high - previous), abs(low - previous)))
+    peak, max_drawdown = closes[0], 0.0
+    for close in closes:
+        peak = max(peak, close)
+        max_drawdown = min(max_drawdown, close / peak - 1)
+    sma20, sma50, sma200 = sma(20), sma(50), sma(200)
+    return {
+        'price':round(price, 4), 'sma20':round(sma20, 4), 'sma50':round(sma50, 4), 'sma200':round(sma200, 4),
+        'momentum_20d':round(momentum(20), 6), 'momentum_60d':round(momentum(60), 6), 'momentum_120d':round(momentum(120), 6),
+        'volatility_20d':round(volatility, 6), 'atr_14d':round(statistics.fmean(true_ranges[-14:]), 4),
+        'current_drawdown_120d':round(price / max(closes[-min(120, len(closes)):]) - 1, 6),
+        'max_drawdown_period':round(max_drawdown, 6),
+        'trend':'上升' if price > sma50 > sma200 else '下降' if price < sma50 < sma200 else '震荡',
+        'sample_days':len(closes),
+    }
+
+def fetch_symbol_history(symbol, force=False):
+    symbol = normalized_symbol(symbol)
+    cached = HISTORY_CACHE.get(symbol)
+    if not force and cached and time.time() - cached['saved_at'] < 6 * 60 * 60:
+        return cached['data']
+    provider_symbol = tencent_history_symbol(symbol)
+    url = f'https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param={provider_symbol},day,,,320'
+    req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0 stock-dashboard/1.0', 'Accept':'application/json', 'Referer':'https://gu.qq.com/'})
+    payload = json.loads(urllib.request.urlopen(req, timeout=12, context=CTX).read())
+    item = (payload.get('data') or {}).get(provider_symbol) or {}
+    rows = item.get('qfqday') or item.get('day') or []
+    points = []
+    for row in rows:
+        if len(row) < 6 or as_float(row[2]) <= 0:
+            continue
+        points.append({'date':str(row[0]), 'open':as_float(row[1]), 'close':as_float(row[2]), 'high':as_float(row[3]), 'low':as_float(row[4]), 'volume':as_float(row[5])})
+    if len(points) < 60:
+        raise ValueError(f'{symbol} 真实历史行情不足')
+    data = {'symbol':symbol, 'provider_symbol':provider_symbol, 'as_of':points[-1]['date'], 'source':'腾讯证券真实日线', 'points':points[-250:], 'technical':technical_snapshot(points[-250:])}
+    HISTORY_CACHE[symbol] = {'saved_at':time.time(), 'data':data}
+    return data
 
 def aggregate_positions(stock_data):
     combined = {}
@@ -499,8 +571,11 @@ def fallback_analysis(body, risk_flags):
     price = max(as_float(body.get('price')), 0.01)
     ret = as_float(body.get('return_pct'))
     sector = str(body.get('sector', '未知'))
+    technical = body.get('technical_data') or {}
     if sector == '杠杆ETF' or ret <= -40:
         rating = 'Sell'
+    elif technical.get('trend') == '下降' and as_float(technical.get('momentum_60d')) < 0:
+        rating = 'Underweight'
     elif ret >= 50 or any('集中度' in flag for flag in risk_flags):
         rating = 'Underweight'
     else:
@@ -508,7 +583,7 @@ def fallback_analysis(body, risk_flags):
     return {
         'rating': rating,
         'confidence': 55,
-        'executive_summary': f'当前收益率 {ret:.1f}%。在缺少完整财报、新闻和真实技术指标时，先执行仓位纪律并等待更多证据。',
+        'executive_summary': f"当前收益率 {ret:.1f}%，真实日线趋势为{technical.get('trend', '未知')}。在完整基本面证据接入前，先执行仓位纪律。",
         'bull_case': [
             '当前仍有可用购买力，可以分批执行而不是一次性交易。',
             f'{sector}敞口可与组合其他资产共同评估。',
@@ -731,6 +806,13 @@ def build_risk_flags(body):
         flags.append('当前回撤超过 30%，禁止仅因价格下跌而机械补仓')
     if as_float(body.get('cost')) <= 0:
         flags.append('持仓为负成本，收益率不能直接用于常规止盈判断')
+    technical = body.get('technical_data') or {}
+    if technical.get('trend') == '下降':
+        flags.append('真实日线处于下降趋势，禁止仅因浮亏机械补仓')
+    if as_float(technical.get('volatility_20d')) >= .50:
+        flags.append(f"20日年化波动率 {as_float(technical.get('volatility_20d'))*100:.1f}%，需降低目标仓位")
+    if as_float(technical.get('current_drawdown_120d')) <= -.20:
+        flags.append(f"较120日高点回撤 {as_float(technical.get('current_drawdown_120d'))*100:.1f}%")
     return flags
 
 @app.after_request
@@ -750,7 +832,7 @@ def health():
         credential('LONGBRIDGE_APP_SECRET', 'LONGPORT_APP_SECRET'),
         credential('LONGBRIDGE_ACCESS_TOKEN', 'LONGPORT_ACCESS_TOKEN'),
     ))
-    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/prices', '/recommendations', '/analysis']})
+    return jsonify({'status':'ok', 'account_source':'longbridge_openapi', 'account_configured':configured, 'session_configured':session_configured(), 'routes':['/health', '/session', '/account', '/prices', '/history', '/recommendations', '/analysis']})
 
 @app.route('/session', methods=['POST', 'OPTIONS'])
 def create_session():
@@ -828,6 +910,23 @@ def prices():
     except Exception as e:
         return jsonify({'error':'实时账户行情获取失败', 'detail':str(e)}), 503
 
+@app.route('/history')
+def history():
+    if not request_authorized():
+        return auth_error()
+    symbol = normalized_symbol(request.args.get('symbol'))
+    try:
+        snapshot = get_account_snapshot()
+    except Exception as exc:
+        return jsonify({'error':'实时持仓不可用，不能确认历史行情权限范围', 'detail':str(exc)}), 503
+    held = {normalized_symbol(item.get('symbol')) for item in snapshot.get('positions', [])}
+    if symbol not in held:
+        return jsonify({'error':'仅允许读取当前实时持仓的历史行情'}), 403
+    try:
+        return jsonify(fetch_symbol_history(symbol, force=request.args.get('force') == '1'))
+    except Exception as exc:
+        return jsonify({'error':'真实历史行情获取失败', 'detail':str(exc), 'symbol':symbol}), 503
+
 @app.route('/analysis', methods=['POST'])
 def analysis():
     if not request_authorized():
@@ -843,12 +942,17 @@ def analysis():
     position = next((item for item in snapshot['positions'] if normalized_symbol(item.get('symbol')) == symbol), None)
     if not position:
         return jsonify({'error':'该标的不在实时持仓中，不能生成持仓操作建议', 'symbol':symbol}), 409
+    try:
+        history_data = fetch_symbol_history(symbol, force=True)
+    except Exception as exc:
+        return jsonify({'error':'真实历史行情不可用，已阻断个股分析', 'detail':str(exc), 'symbol':symbol}), 503
     body.update({
         'symbol':position['symbol'], 'name':position['name'], 'ccy':position['currency'],
         'cost':position['cost_price'], 'price':position['price'], 'qty':position['quantity'],
         'return_pct':((position['price'] - position['cost_price']) / abs(position['cost_price']) * 100) if position['cost_price'] else 0,
         'sector':position['sector'], 'portfolio_context':live_position_context(snapshot, position),
         'price_updated_at':snapshot['fetched_at'], 'account_verified':True,
+        'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'],
     })
     risk_flags = build_risk_flags(body)
     key = os.getenv('DEEPSEEK_API_KEY', '')
@@ -862,7 +966,7 @@ rating 必须是 Buy、Overweight、Hold、Underweight、Sell 之一。
 价格必须使用标的原始报价币种。confidence 为0到100整数。
 如果建议与上一条不同，必须在 change_reason 中说明变化原因，并在 new_evidence 数组中列出本次输入里真实发生变化的价格、收益率、仓位或风险证据；不得把未提供的新闻或财报当作新证据。
 JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case(数组), position_sizing, entry_price, stop_loss, price_target, time_horizon, invalidation_conditions(数组), change_reason, new_evidence(数组)。
-持仓数据：{json.dumps(body, ensure_ascii=False)}
+持仓与真实技术数据：{json.dumps(body, ensure_ascii=False)}
 硬风控提示：{json.dumps(risk_flags, ensure_ascii=False)}"""
         req = urllib.request.Request('https://api.deepseek.com/v1/chat/completions',
             data=json.dumps({'model':'deepseek-chat','messages':[{'role':'user','content':prompt}],
@@ -882,7 +986,8 @@ JSON字段：rating, confidence, executive_summary, bull_case(数组), bear_case
         'symbol': str(body.get('symbol', 'UNKNOWN')),
         'decision_version': 2,
         'risk_flags': risk_flags,
-        'data_scope': 'verified_live_longbridge_position_price_portfolio',
+        'data_scope': 'verified_live_longbridge_position_price_portfolio_and_real_daily_technical',
+        'technical_data':history_data['technical'], 'history_as_of':history_data['as_of'], 'history_source':history_data['source'],
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
     })
     return jsonify(result)

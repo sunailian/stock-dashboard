@@ -21,6 +21,7 @@ def load_logic():
         'build_discovery_recommendation',
         'longbridge_signature', 'rates_to_cny', 'aggregate_positions',
         'build_account_snapshot', 'issue_session_token', 'valid_session_token',
+        'technical_snapshot',
     }
     module = ast.Module(
         body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names],
@@ -132,6 +133,17 @@ class DecisionAuditTests(unittest.TestCase):
             with patch.object(time, 'time', return_value=1_061):
                 self.assertFalse(self.logic['valid_session_token'](token))
             self.assertFalse(self.logic['valid_session_token'](token+'x'))
+
+    def test_real_history_technical_snapshot_detects_uptrend(self):
+        points=[]
+        for index in range(250):
+            close=100+index*.25
+            points.append({'date':str(index),'open':close-.2,'close':close,'high':close+.5,'low':close-.7,'volume':1000+index})
+        result=self.logic['technical_snapshot'](points)
+        self.assertEqual(result['trend'],'上升')
+        self.assertGreater(result['momentum_60d'],0)
+        self.assertGreater(result['sma50'],result['sma200'])
+        self.assertGreater(result['atr_14d'],0)
 
     def test_discovery_score_rewards_missing_sector(self):
         closes = [100 + index * .35 + math.sin(index / 5) for index in range(252)]
