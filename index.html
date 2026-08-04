@@ -414,7 +414,7 @@ let detailChart=null;
 let activeDetailSymbol='';
 const DECISION_LOG_KEY='zhuoyuan_decision_log_v2';
 const LEGACY_DECISION_LOG_KEY='zhuoyuan_decision_log_v1';
-const ANALYSIS_CACHE_KEY='zhuoyuan_analysis_cache_v6_daily';
+const ANALYSIS_CACHE_KEY='zhuoyuan_analysis_cache_v7_factor_active';
 const PRICE_HISTORY_KEY='zhuoyuan_price_history_v1';
 const DISCOVERY_CACHE_KEY='zhuoyuan_discovery_cache_v1';
 function nativeCurrency(ccy){return ccy==='USD'?'$':ccy==='CNY'?'¥':'HK$'}
@@ -527,7 +527,7 @@ function saveAnalysis(p,data){
   const portfolioContext=buildPortfolioContext(p);
   const cache=readStorage(ANALYSIS_CACHE_KEY,{});cache[p.sym]={savedAt:Date.now(),price:p.price,contextSignature:analysisContextSignature(p),data};localStorage.setItem(ANALYSIS_CACHE_KEY,JSON.stringify(cache));
   const log=getDecisionLog();
-  if(!log.some(item=>item.symbol===p.sym&&item.generated_at===data.generated_at))log.unshift({decision_id:`${p.sym}-${data.generated_at}`,symbol:p.sym,price:p.price,rating:data.rating,original_rating:data.consistency?.original_rating||data.rating,generated_at:data.generated_at,confidence:data.confidence,confidence_basis:data.confidence_basis,change_reason:data.change_reason,consistency:data.consistency,entry_price:data.entry_price,stop_loss:data.stop_loss,price_target:data.price_target,portfolio_context:portfolioContext,benchmark_symbol:p.ccy==='USD'?'SPX.US':null,benchmark_price:p.ccy==='USD'?latestMarketPrices['SPX.US']||null:null,outcomes:{}});
+  if(!log.some(item=>item.symbol===p.sym&&item.generated_at===data.generated_at))log.unshift({decision_id:`${p.sym}-${data.generated_at}`,symbol:p.sym,price:p.price,rating:data.rating,original_rating:data.consistency?.original_rating||data.rating,decision_score:data.decision_score,decision_basis:data.decision_basis,generated_at:data.generated_at,confidence:data.confidence,confidence_basis:data.confidence_basis,change_reason:data.change_reason,consistency:data.consistency,entry_price:data.entry_price,stop_loss:data.stop_loss,price_target:data.price_target,portfolio_context:portfolioContext,benchmark_symbol:p.ccy==='USD'?'SPX.US':null,benchmark_price:p.ccy==='USD'?latestMarketPrices['SPX.US']||null:null,outcomes:{}});
   writeDecisionLog(log);
   renderActionQueue(portfolioRiskData);
 }
@@ -603,7 +603,8 @@ function applyStructuredAnalysis(p,data,cached=false){
   document.getElementById('detail-sizing').textContent=data.position_sizing||'维持现有仓位';
   updateAdvicePriceLines(p,data);
   const source={deepseek_structured:'DeepSeek结构化分析',rule_fallback:'规则回退',rule_fallback_after_error:'AI失败·规则回退','deterministic_policy_engine':'确定性策略引擎','deterministic_policy_engine+deepseek_narrative':'确定性策略引擎 · DeepSeek仅解释','deterministic_policy_engine+narrative_fallback':'确定性策略引擎 · 规则解释'}[data.source]||data.source;
-  const factorStatus=data.factor_analysis?.model_status==='shadow'?` · 多因子影子模式未参与评级 · 研究覆盖 ${Math.round(Number(data.factor_analysis?.composite?.data_coverage||0)*100)}%`:'';
+  const factor=data.factor_analysis||{},factorCoverage=Math.round(Number(factor.composite?.data_coverage||0)*100);
+  const factorStatus=factor.model_status==='active_rules'?` · 多因子评分 ${Number(data.decision_score||0)>=0?'+':''}${Number(data.decision_score||0).toFixed(1)} · 研究覆盖 ${factorCoverage}%`:factor.model_status==='shadow'?` · 多因子影子模式未参与评级 · 研究覆盖 ${factorCoverage}%`:'';
   const historySource=data.history_source?` · 日线 ${data.history_source}`:'';
   document.getElementById('analysis-meta').textContent=`${source} · 置信度 ${data.confidence||0}%${factorStatus}${historySource} · ${cached?'今日建议':'刚刚更新'} · ${formatUTC8DateTime(data.generated_at)}`;
   const research=data.research_snapshot||{},metrics=research.valuation?.metrics||{},indicators=research.financial?.indicators||{},ratings=research.ratings||{},parts=[];
@@ -635,7 +636,7 @@ async function fetchStructuredAnalysis(p,force=false){
   button.disabled=true;button.textContent='更新中...';document.getElementById('analysis-meta').textContent='正在更新行情、研究证据并执行集中度风控';
   try{
     const previous=getPreviousDecision(p.sym);
-    const payload={symbol:p.sym,name:p.name,ccy:p.ccy,cost:p.cost,price:p.price,price_updated_at:priceTime,qty:p.qty,return_pct:p.ret,sector:p.sector,portfolio_context:buildPortfolioContext(p),previous_decision:previous?{rating:previous.rating,price:previous.price,generated_at:previous.generated_at,portfolio_context:previous.portfolio_context||null}:null,validation_context:getValidationContext(p.sym),force};
+    const payload={symbol:p.sym,name:p.name,ccy:p.ccy,cost:p.cost,price:p.price,price_updated_at:priceTime,qty:p.qty,return_pct:p.ret,sector:p.sector,portfolio_context:buildPortfolioContext(p),previous_decision:previous?{rating:previous.rating,price:previous.price,decision_score:previous.decision_score,generated_at:previous.generated_at,portfolio_context:previous.portfolio_context||null}:null,validation_context:getValidationContext(p.sym),force};
     const resp=await fetch(API_BASE+'/analysis',{method:'POST',headers:apiHeaders({'Content-Type':'application/json'}),cache:'no-store',body:JSON.stringify(payload)});
     if(resp.status===401){showLogin('登录已失效，请重新验证');throw new Error('登录已失效')}
     const data=await resp.json();if(!resp.ok)throw new Error(data.error||('analysis '+resp.status));

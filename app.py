@@ -11,7 +11,7 @@ CTX.check_hostname = False
 CTX.verify_mode = False
 RATINGS = {'Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'}
 RATING_SCORE = {'Sell': -2, 'Underweight': -1, 'Hold': 0, 'Overweight': 1, 'Buy': 2}
-EVIDENCE_KEYWORDS = ('价格', '收益', '仓位', '敞口', '集中', '回撤', '成本', '现金', '风险')
+EVIDENCE_KEYWORDS = ('价格', '收益', '仓位', '敞口', '集中', '回撤', '成本', '现金', '风险', '趋势', '动量', '估值', '盈利', '预期', '因子', '财报')
 
 # 候选池只是研究范围，不代表预设推荐。最终顺序每天由真实日线指标和组合互补性计算。
 DISCOVERY_UNIVERSE = (
@@ -1461,9 +1461,6 @@ def factor_analysis_from_history(symbol, history, market=None, research=None):
     valuation_metrics = valuation.get('metrics') or {}
     financial_indicators = financial.get('indicators') or {}
     pe = valuation_metrics.get('pe') or {}
-    value_available = bool(valuation_metrics)
-    quality_available = bool(financial_indicators)
-    expectation_available = bool(forecast.get('latest') or ratings.get('coverage_count'))
     value_raw = {
         'pe_ttm':pe.get('value'), 'pe_historical_percentile':pe.get('historical_percentile'),
         'pe_industry_median':pe.get('industry_median'), 'pb':(valuation_metrics.get('pb') or {}).get('value'),
@@ -1484,27 +1481,73 @@ def factor_analysis_from_history(symbol, history, market=None, research=None):
         'target_upside_pct':round((as_float(ratings.get('target_price')) / closes[-1] - 1) * 100, 2) if as_float(ratings.get('target_price')) > 0 else None,
         'coverage_count':ratings.get('coverage_count'), 'rating_distribution':ratings.get('ratings'),
     }
+    def finite_values(values):
+        return [as_float(value, float('nan')) for value in values if value is not None and math.isfinite(as_float(value, float('nan')))]
+
+    def average_score(values):
+        clean = finite_values(values)
+        return round(sum(clean) / len(clean), 2) if clean else None
+
+    return_60d = momentum_raw.get('return_60d')
+    momentum_score = average_score([
+        clamp(as_float(return_60d) / .20, -1, 1) * 100 if return_60d is not None else None,
+        100 if momentum_raw['above_ma200'] else -100,
+        100 if momentum_raw['ma50_above_ma200'] else -100,
+    ])
+    vol_60d, drawdown = low_vol_raw.get('volatility_60d'), low_vol_raw.get('max_drawdown_252d')
+    low_vol_score = average_score([
+        clamp((.50 - as_float(vol_60d)) / .35, -1, 1) * 100 if vol_60d is not None else None,
+        clamp((as_float(drawdown) + .25) / .25, -1, 1) * 100 if drawdown is not None else None,
+    ])
+    pe_value, pe_percentile, industry_pe = value_raw.get('pe_ttm'), value_raw.get('pe_historical_percentile'), value_raw.get('pe_industry_median')
+    value_score = average_score([
+        clamp((50 - as_float(pe_percentile)) * 2, -100, 100) if pe_percentile is not None else None,
+        clamp((as_float(industry_pe) / as_float(pe_value) - 1) * 200, -100, 100) if as_float(pe_value) > 0 and as_float(industry_pe) > 0 else None,
+    ])
+    assets, debts = quality_raw.get('total_assets'), quality_raw.get('total_debts')
+    quality_score = average_score([
+        clamp(as_float(quality_raw['revenue_yoy']) / .25, -1, 1) * 100 if quality_raw.get('revenue_yoy') is not None else None,
+        clamp(as_float(quality_raw['net_profit_yoy']) / .35, -1, 1) * 100 if quality_raw.get('net_profit_yoy') is not None else None,
+        clamp((as_float(quality_raw['roe']) - .12) / .12, -1, 1) * 100 if quality_raw.get('roe') is not None else None,
+        clamp((as_float(quality_raw['net_profit_margin']) - .10) / .20, -1, 1) * 100 if quality_raw.get('net_profit_margin') is not None else None,
+        clamp((.60 - as_float(debts) / as_float(assets)) / .40, -1, 1) * 100 if as_float(assets) > 0 and debts is not None else None,
+    ])
+    distribution = expectation_raw.get('rating_distribution') or {}
+    rating_total = sum(as_float(distribution.get(key)) for key in ('strong_buy', 'buy', 'hold', 'under', 'sell'))
+    rating_balance = ((2*as_float(distribution.get('strong_buy')) + as_float(distribution.get('buy')) - as_float(distribution.get('under')) - 2*as_float(distribution.get('sell'))) / (2*rating_total) * 100) if rating_total else None
+    expectation_score = average_score([
+        clamp(as_float(expectation_raw['eps_revision_30d_pct']) / 10, -1, 1) * 100 if expectation_raw.get('eps_revision_30d_pct') is not None else None,
+        clamp((as_float(expectation_raw['target_upside_pct']) - 5) / 25, -1, 1) * 100 if expectation_raw.get('target_upside_pct') is not None else None,
+        rating_balance,
+    ])
     factor_weights = {'momentum':.25, 'value':.20, 'quality':.25, 'low_volatility':.15, 'expectation_revision':.15}
-    available_map = {'momentum':True, 'value':value_available, 'quality':quality_available, 'low_volatility':True, 'expectation_revision':expectation_available}
+    factor_scores = {'momentum':momentum_score, 'value':value_score, 'quality':quality_score, 'low_volatility':low_vol_score, 'expectation_revision':expectation_score}
+    available_map = {key:value is not None for key, value in factor_scores.items()}
     coverage = sum(factor_weights[key] for key, available in available_map.items() if available)
+    composite_score = round(sum(factor_scores[key] * factor_weights[key] for key in factor_scores if available_map[key]) / coverage, 2) if coverage else 0
+    active = coverage >= .70
+    contributions = {key:round((factor_scores[key] or 0) * factor_weights[key] / coverage, 2) if active and available_map[key] else 0 for key in factor_scores}
     missing = [key for key, available in available_map.items() if not available]
     warnings = ['当前没有合格横截面，因此不生成伪造的百分位或Z分数']
+    if active:
+        warnings.append('绝对区间多因子评分已参与操作评级，但尚未完成横截面IC与样本外收益验收')
     if missing:
         warnings.append('研究证据仍缺失：' + '、'.join(missing))
     if research.get('errors'):
         warnings.append('Longbridge部分研究接口不可用：' + '、'.join(sorted(research['errors'])))
-    reason = '覆盖率低于70%，且模型仍处于shadow，不能影响最终持仓建议' if coverage < .70 else '研究覆盖率已提高，但缺乏横截面标准化与回测验收，影子模型仍不得影响最终建议'
+    reason = '覆盖率低于70%，模型保持shadow且不影响最终建议' if not active else '覆盖率达到70%，启用可解释区间评分；横截面Z分数与IC验证仍保持关闭'
+    signal = 'positive' if active and composite_score >= 35 else 'negative' if active and composite_score <= -30 else 'neutral'
     return {
-        'symbol':normalized_symbol(symbol), 'model_version':'multifactor-v1.0.0', 'model_status':'shadow', 'snapshot_date':history.get('as_of'),
+        'symbol':normalized_symbol(symbol), 'model_version':'multifactor-v1.1.0', 'model_status':'active_rules' if active else 'shadow', 'snapshot_date':history.get('as_of'),
         'universe':{'market':market, 'name':'.SPX.US' if market == 'US' else 'HSI/HSTECH', 'size':None, 'status':'cross_section_pending'},
         'factors':{
-            'momentum':{'research_weight':.25, 'available':True, 'raw':momentum_raw, 'z_score':None, 'percentile':None, 'contribution':0},
-            'value':{'research_weight':.20, 'available':value_available, 'raw':value_raw, 'z_score':None, 'percentile':None, 'contribution':0},
-            'quality':{'research_weight':.25, 'available':quality_available, 'raw':quality_raw, 'z_score':None, 'percentile':None, 'contribution':0},
-            'low_volatility':{'research_weight':.15, 'available':True, 'raw':low_vol_raw, 'z_score':None, 'percentile':None, 'contribution':0},
-            'expectation_revision':{'research_weight':.15, 'available':expectation_available, 'raw':expectation_raw, 'z_score':None, 'percentile':None, 'contribution':0},
+            'momentum':{'research_weight':.25, 'available':available_map['momentum'], 'raw':momentum_raw, 'absolute_score':momentum_score, 'z_score':None, 'percentile':None, 'contribution':contributions['momentum']},
+            'value':{'research_weight':.20, 'available':available_map['value'], 'raw':value_raw, 'absolute_score':value_score, 'z_score':None, 'percentile':None, 'contribution':contributions['value']},
+            'quality':{'research_weight':.25, 'available':available_map['quality'], 'raw':quality_raw, 'absolute_score':quality_score, 'z_score':None, 'percentile':None, 'contribution':contributions['quality']},
+            'low_volatility':{'research_weight':.15, 'available':available_map['low_volatility'], 'raw':low_vol_raw, 'absolute_score':low_vol_score, 'z_score':None, 'percentile':None, 'contribution':contributions['low_volatility']},
+            'expectation_revision':{'research_weight':.15, 'available':available_map['expectation_revision'], 'raw':expectation_raw, 'absolute_score':expectation_score, 'z_score':None, 'percentile':None, 'contribution':contributions['expectation_revision']},
         },
-        'composite':{'signal':'neutral', 'technical_observation':'positive' if positive_trend else 'negative' if negative_trend else 'mixed', 'signal_percentile':None, 'confidence':round(coverage*.5, 2), 'data_coverage':coverage, 'decision_weight':0, 'reason':reason},
+        'composite':{'score':composite_score, 'signal':signal, 'technical_observation':'positive' if positive_trend else 'negative' if negative_trend else 'mixed', 'signal_percentile':None, 'confidence':round(coverage * (.55 + min(abs(composite_score), 80) / 200), 2), 'data_coverage':coverage, 'decision_weight':1 if active else 0, 'thresholds':{'overweight':35, 'underweight':-30, 'sell':-60}, 'reason':reason},
         'flow_overlay':{'available':False, 'score_effect':0}, 'price_plan':deterministic_price_plan(technical),
         'quality':{'missing_fields':missing, 'stale_fields':[], 'warnings':warnings},
         'source':history.get('source', 'public_history_fallback') + '+longbridge_research', 'fetched_at':iso_now(),
@@ -1617,6 +1660,54 @@ def fallback_analysis(body, risk_flags):
         'new_evidence': [],
         'source': 'deterministic_policy_engine',
     }
+
+def deterministic_factor_decision(body, risk_flags, factor_result):
+    """Translate a sufficiently covered, auditable factor score into a held-position action."""
+    result = fallback_analysis(body, risk_flags)
+    composite = (factor_result or {}).get('composite') or {}
+    if as_float(composite.get('decision_weight')) <= 0:
+        result['decision_score'] = None
+        result['decision_basis'] = 'insufficient_factor_coverage'
+        return result
+    score = clamp(as_float(composite.get('score')), -100, 100)
+    previous_rating = str((body.get('previous_decision') or {}).get('rating') or '')
+    if score <= -60 and composite.get('technical_observation') == 'negative':
+        rating = 'Sell'
+    elif score <= (-15 if previous_rating == 'Underweight' else -30):
+        rating = 'Underweight'
+    elif score >= (20 if previous_rating == 'Overweight' else 35):
+        rating = 'Overweight'
+    else:
+        rating = 'Hold'
+    context = body.get('portfolio_context') or {}
+    position_weight = as_float(context.get('position_weight'))
+    company_weight = as_float(context.get('company_weight'))
+    if rating == 'Overweight' and (position_weight >= .18 or company_weight >= .20):
+        rating = 'Hold'
+    elif rating == 'Hold' and (position_weight >= .22 or company_weight >= .24):
+        rating = 'Underweight'
+
+    labels = {'momentum':'动量', 'value':'估值', 'quality':'盈利质量', 'low_volatility':'波动风险', 'expectation_revision':'盈利预期'}
+    ranked = sorted(
+        ((key, as_float(item.get('contribution'))) for key, item in ((factor_result or {}).get('factors') or {}).items() if item.get('available')),
+        key=lambda item:abs(item[1]), reverse=True,
+    )
+    evidence = [f'{labels.get(key, key)}因子贡献 {value:+.1f} 分' for key, value in ranked[:3]]
+    bull_case = [f'{labels.get(key, key)}因子贡献 {value:+.1f} 分，形成正向支持' for key, value in ranked if value > 0][:3]
+    bear_case = [f'{labels.get(key, key)}因子贡献 {value:+.1f} 分，构成负向压力' for key, value in ranked if value < 0][:3]
+    action = {'Overweight':'加仓', 'Underweight':'减仓', 'Sell':'卖出'}.get(rating, '持有')
+    result.update({
+        'rating':rating, 'model_rating':rating, 'decision_score':round(score, 1),
+        'decision_basis':'multifactor_absolute_score_v1',
+        'confidence':round(as_float(composite.get('confidence')) * 100),
+        'executive_summary':f"综合因子评分 {score:+.1f}/100，数据覆盖 {as_float(composite.get('data_coverage'))*100:.0f}%，当前操作评级为{action}。",
+        'bull_case':bull_case or ['当前没有达到可量化阈值的正向因子'],
+        'bear_case':bear_case or ['当前没有达到可量化阈值的负向因子'],
+        'new_evidence':evidence,
+        'change_reason':f'综合因子评分为 {score:+.1f}，依据加仓 ≥35、减仓 ≤-30、卖出 ≤-60 且趋势为负的阈值生成。',
+        'source':'deterministic_policy_engine',
+    })
+    return result
 
 def normalize_analysis(raw, body, risk_flags):
     fallback = fallback_analysis(body, risk_flags)
@@ -1732,7 +1823,11 @@ def validate_decision(result, body, risk_flags):
         abs(as_float(context.get(key)) - as_float(previous_context.get(key))) >= 0.01
         for key in ('position_weight', 'sector_weight', 'company_weight')
     ) if previous_context else False
-    material_change = price_changed or exposure_changed
+    previous_score = previous.get('decision_score')
+    current_score = result.get('decision_score')
+    score_changed = previous_score is not None and current_score is not None and abs(as_float(current_score) - as_float(previous_score)) >= 10
+    threshold_evidence = previous_score is None and current_score is not None and (as_float(current_score) >= 35 or as_float(current_score) <= -30)
+    material_change = price_changed or exposure_changed or score_changed or threshold_evidence
     valid_new_evidence = [
         item for item in chinese_list(result.get('new_evidence'), [])
         if any(keyword in item for keyword in EVIDENCE_KEYWORDS)
@@ -2135,7 +2230,7 @@ def analysis():
     except Exception as exc:
         portfolio_risk_result = {'model_version':'portfolio-risk-v1', 'model_status':'shadow', 'error':str(exc), 'snapshot_id':None}
     risk_flags = build_risk_flags(body)
-    result = fallback_analysis(body, risk_flags)
+    result = deterministic_factor_decision(body, risk_flags, factor_result)
     result.update(factor_result['price_plan'])
     evidence = research_evidence(research_data, position['price'])
     result['bull_case'] = list(dict.fromkeys(result['bull_case'] + evidence['bull']))[:4]
@@ -2154,7 +2249,7 @@ def analysis():
 实时持仓和技术数据：{json.dumps(body, ensure_ascii=False)}
 市场环境影子结果：{json.dumps(market_result, ensure_ascii=False)}
 组合风险影子结果：{json.dumps(portfolio_risk_result, ensure_ascii=False)}
-因子影子结果：{json.dumps(factor_result, ensure_ascii=False)}
+多因子确定性结果：{json.dumps(factor_result, ensure_ascii=False)}
 硬风控提示：{json.dumps(risk_flags, ensure_ascii=False)}"""
         req = urllib.request.Request('https://api.deepseek.com/v1/chat/completions',
             data=json.dumps({'model':'deepseek-chat','messages':[{'role':'user','content':prompt}],
@@ -2186,10 +2281,16 @@ def analysis():
     policy = investment_policy()
     if not policy.get('confirmed_by_user'):
         result['target_position_pct'] = None
-        result['position_sizing'] = f"当前仓位约 {as_float((body.get('portfolio_context') or {}).get('position_weight'))*100:.1f}%；投资策略尚未确认，本次只给出持有/减仓风险判断，不生成目标仓位。"
+        current_pct = as_float((body.get('portfolio_context') or {}).get('position_weight')) * 100
+        if result['rating'] in {'Buy', 'Overweight'}:
+            result['position_sizing'] = f'当前仓位约 {current_pct:.1f}%；加仓信号已通过因子阈值与硬风控，但投资策略参数尚未确认，因此只建议在入场区间小额分批，不生成目标仓位。'
+        elif result['rating'] in {'Underweight', 'Sell'}:
+            result['position_sizing'] = f'当前仓位约 {current_pct:.1f}%；减仓信号已通过因子阈值或风险约束，但投资策略参数尚未确认，因此不生成精确目标仓位。'
+        else:
+            result['position_sizing'] = f'当前仓位约 {current_pct:.1f}%；综合评分未跨越操作阈值，维持现有仓位。投资策略参数尚未确认，因此不生成目标仓位。'
     result.update({
         'symbol': str(body.get('symbol', 'UNKNOWN')),
-        'decision_version': 3, 'rating_source':'deterministic_policy_engine',
+        'decision_version': 4, 'rating_source':'deterministic_policy_engine',
         'desired_weight':None, 'binding_constraint':'policy_not_configured' if not policy.get('confirmed_by_user') else 'shadow_models_not_advisory',
         'risk_flags': risk_flags,
         'data_scope': 'verified_live_longbridge_position_cost_account_and_preferred_quote_with_audited_fallback',
@@ -2198,7 +2299,7 @@ def analysis():
         'factor_analysis':factor_result, 'market_regime':market_result, 'portfolio_risk':portfolio_risk_result, 'narrative':narrative,
         'research_snapshot':research_data,
         'upcoming_events':event_data.get('events', []), 'event_data_complete':event_data.get('complete', False),
-        'audit':{'data_snapshot_id':portfolio_risk_result.get('snapshot_id'), 'factor_model_version':factor_result['model_version'], 'factor_model_status':factor_result['model_status'], 'risk_model_version':portfolio_risk_result.get('model_version'), 'policy_version':policy['version'], 'consistency':result.get('consistency', {}).get('status')},
+        'audit':{'data_snapshot_id':portfolio_risk_result.get('snapshot_id'), 'factor_model_version':factor_result['model_version'], 'factor_model_status':factor_result['model_status'], 'factor_decision_weight':factor_result['composite']['decision_weight'], 'decision_score':result.get('decision_score'), 'decision_basis':result.get('decision_basis'), 'risk_model_version':portfolio_risk_result.get('model_version'), 'policy_version':policy['version'], 'consistency':result.get('consistency', {}).get('status')},
         'generated_at': iso_now(),
     })
     return jsonify(result)

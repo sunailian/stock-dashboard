@@ -18,7 +18,7 @@ def load_logic():
     source = (Path(__file__).parents[1] / 'app.py').read_text()
     tree = ast.parse(source)
     names = {
-        'as_float', 'has_chinese', 'chinese_list', 'fallback_analysis',
+        'as_float', 'has_chinese', 'chinese_list', 'fallback_analysis', 'deterministic_factor_decision',
         'normalize_analysis', 'build_risk_flags', 'validate_decision',
         'clamp', 'normalized_symbol', 'score_discovery_candidate',
         'build_discovery_recommendation',
@@ -46,7 +46,7 @@ def load_logic():
     namespace = {
         'RATINGS': {'Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'},
         'RATING_SCORE': {'Sell': -2, 'Underweight': -1, 'Hold': 0, 'Overweight': 1, 'Buy': 2},
-        'EVIDENCE_KEYWORDS': ('价格', '收益', '仓位', '敞口', '集中', '回撤', '成本', '现金', '风险'),
+        'EVIDENCE_KEYWORDS': ('价格', '收益', '仓位', '敞口', '集中', '回撤', '成本', '现金', '风险', '趋势', '动量', '估值', '盈利', '预期', '因子', '财报'),
         'math': math,
         'statistics': statistics,
         'hashlib': hashlib,
@@ -279,7 +279,7 @@ class DecisionAuditTests(unittest.TestCase):
         self.assertEqual(result['composite']['data_coverage'],.4)
         self.assertTrue(all(item['contribution']==0 for item in result['factors'].values()))
 
-    def test_research_normalizers_and_shadow_coverage(self):
+    def test_research_normalizers_activate_audited_factor_score(self):
         valuation=self.logic['normalize_valuation_snapshot']({'overview':{'date':'2026-07-31','metrics':{'pe':{'metric':'20','industry_median':'18'}}},'history':{'metrics':{'pe':{'list':[{'value':'10'},{'value':'30'}]}}}})
         financial=self.logic['normalize_financial_snapshot']({'report':'2026.Q2','indicators':[{'field_name':'operating_revenue','indicator_value':'1000','yoy':'12.5%'},{'field_name':'roe','indicator_value':'18%'}]})
         forecast=self.logic['normalize_eps_forecast']({'items':[{'forecast_start_date':'1000000','forecast_eps_mean':'2','institution_total':'10'},{'forecast_start_date':str(1000000+30*86400),'forecast_eps_mean':'2.2','institution_total':'12'}]})
@@ -293,7 +293,33 @@ class DecisionAuditTests(unittest.TestCase):
         research={'valuation':valuation,'financial':financial,'forecast':forecast,'ratings':ratings}
         result=self.logic['factor_analysis_from_history']('NVDA.US',{'points':points,'as_of':'2026-07-31'},research=research)
         self.assertEqual(result['composite']['data_coverage'],1)
-        self.assertEqual(result['composite']['decision_weight'],0)
+        self.assertEqual(result['model_status'],'active_rules')
+        self.assertEqual(result['composite']['decision_weight'],1)
+        self.assertIsInstance(result['composite']['score'],float)
+
+    def test_factor_decision_can_add_reduce_and_apply_hysteresis(self):
+        factors={key:{'available':True,'contribution':value} for key,value in {'momentum':15,'value':8,'quality':12,'low_volatility':3,'expectation_revision':4}.items()}
+        body={'price':100,'return_pct':5,'sector':'科技','portfolio_context':{'position_weight':.08,'company_weight':.08}}
+        positive={'composite':{'decision_weight':1,'score':42,'confidence':.7,'data_coverage':1,'technical_observation':'positive'},'factors':factors}
+        added=self.logic['deterministic_factor_decision'](body,[],positive)
+        self.assertEqual(added['rating'],'Overweight')
+        self.assertEqual(added['decision_score'],42)
+        negative={'composite':{'decision_weight':1,'score':-40,'confidence':.7,'data_coverage':1,'technical_observation':'negative'},'factors':factors}
+        reduced=self.logic['deterministic_factor_decision'](body,[],negative)
+        self.assertEqual(reduced['rating'],'Underweight')
+        body['previous_decision']={'rating':'Overweight'}
+        positive['composite']['score']=22
+        self.assertEqual(self.logic['deterministic_factor_decision'](body,[],positive)['rating'],'Overweight')
+
+    def test_factor_threshold_is_valid_new_evidence_for_rating_change(self):
+        factors={'momentum':{'available':True,'contribution':14},'value':{'available':True,'contribution':8},'quality':{'available':True,'contribution':10},'low_volatility':{'available':True,'contribution':3},'expectation_revision':{'available':True,'contribution':5}}
+        body={'price':100,'return_pct':5,'sector':'科技','portfolio_context':{'position_weight':.08,'company_weight':.08},'previous_decision':{'rating':'Hold','price':100,'portfolio_context':{'position_weight':.08,'company_weight':.08}},'validation_context':{}}
+        factor={'composite':{'decision_weight':1,'score':40,'confidence':.7,'data_coverage':1,'technical_observation':'positive'},'factors':factors}
+        result=self.logic['deterministic_factor_decision'](body,[],factor)
+        validated=self.logic['validate_decision'](result,body,[])
+        self.assertEqual(validated['rating'],'Overweight')
+        self.assertTrue(validated['new_evidence'])
+        self.assertEqual(validated['consistency']['status'],'passed')
 
     def test_research_evidence_is_explicit_and_auditable(self):
         snapshot={'coverage_pct':75,'valuation':{'metrics':{'pe':{'value':20,'historical_percentile':25}}},'financial':{'indicators':{'operating_revenue':{'yoy':.1},'net_profit':{'yoy':-.05}}},'forecast':{'revision_30d_pct':2.5},'ratings':{'target_price':110,'coverage_count':12}}
